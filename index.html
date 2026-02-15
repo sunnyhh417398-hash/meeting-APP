@@ -4,8 +4,548 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Meeting Speaking Time Tracker</title>
-  <link rel="stylesheet" href="css/style.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style>
+/* ===== Reset & Base ===== */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --color-bg: #f5f7fa;
+  --color-surface: #ffffff;
+  --color-primary: #4f46e5;
+  --color-primary-hover: #4338ca;
+  --color-secondary: #6b7280;
+  --color-danger: #ef4444;
+  --color-danger-hover: #dc2626;
+  --color-success: #10b981;
+  --color-success-hover: #059669;
+  --color-text: #1f2937;
+  --color-text-muted: #6b7280;
+  --color-border: #e5e7eb;
+  --color-speaking: #10b981;
+  --radius: 10px;
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.1);
+  --transition: 0.2s ease;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  background: var(--color-bg);
+  color: var(--color-text);
+  line-height: 1.6;
+  min-height: 100vh;
+}
+
+.app {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 20px 16px 40px;
+}
+
+.header {
+  text-align: center;
+  margin-bottom: 24px;
+}
+
+.header h1 {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--color-primary);
+}
+
+.subtitle {
+  color: var(--color-text-muted);
+  font-size: 0.95rem;
+  margin-top: 4px;
+}
+
+.nav-tabs {
+  display: flex;
+  gap: 0;
+  margin-top: 20px;
+  background: var(--color-surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.nav-tab {
+  flex: 1;
+  padding: 12px 16px;
+  border: none;
+  background: transparent;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.nav-tab:hover {
+  background: var(--color-bg);
+}
+
+.nav-tab.active {
+  color: var(--color-primary);
+  background: var(--color-bg);
+  box-shadow: inset 0 -2px 0 var(--color-primary);
+}
+
+.tab-content {
+  display: none;
+}
+
+.tab-content.active {
+  display: block;
+}
+
+section {
+  background: var(--color-surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 20px;
+  margin-bottom: 16px;
+}
+
+section h2 {
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin-bottom: 14px;
+  color: var(--color-text);
+}
+
+.meeting-info {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+
+.meeting-info input {
+  flex: 1;
+  min-width: 180px;
+  padding: 10px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-text);
+  outline: none;
+  transition: border var(--transition);
+}
+
+.meeting-info input:focus {
+  border-color: var(--color-primary);
+}
+
+.meeting-timer {
+  font-size: 1.5rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-primary);
+  white-space: nowrap;
+}
+
+.meeting-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.btn {
+  padding: 10px 20px;
+  border: none;
+  border-radius: var(--radius);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition);
+  white-space: nowrap;
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: var(--color-primary);
+  color: white;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--color-primary-hover);
+}
+
+.btn-secondary {
+  background: var(--color-secondary);
+  color: white;
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: #4b5563;
+}
+
+.btn-danger {
+  background: var(--color-danger);
+  color: white;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: var(--color-danger-hover);
+}
+
+.btn-small {
+  padding: 6px 14px;
+  font-size: 0.8rem;
+}
+
+.btn-speak {
+  background: var(--color-success);
+  color: white;
+  min-width: 90px;
+}
+
+.btn-speak:hover:not(:disabled) {
+  background: var(--color-success-hover);
+}
+
+.btn-speak.speaking {
+  background: var(--color-danger);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.btn-speak.speaking:hover:not(:disabled) {
+  background: var(--color-danger-hover);
+}
+
+@keyframes pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+  50% { box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); }
+}
+
+.add-participant {
+  display: flex;
+  gap: 10px;
+}
+
+.add-participant input {
+  flex: 1;
+  padding: 10px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  font-size: 0.95rem;
+  outline: none;
+  transition: border var(--transition);
+}
+
+.add-participant input:focus {
+  border-color: var(--color-primary);
+}
+
+.participants-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.empty-state {
+  text-align: center;
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+  padding: 16px 0;
+}
+
+.participant-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  background: var(--color-bg);
+  border-radius: var(--radius);
+  transition: all var(--transition);
+}
+
+.participant-card.is-speaking {
+  background: #ecfdf5;
+  border-left: 4px solid var(--color-speaking);
+}
+
+.participant-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 1rem;
+  color: white;
+  flex-shrink: 0;
+}
+
+.participant-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.participant-name {
+  font-weight: 600;
+  font-size: 0.95rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.participant-time {
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.participant-bar-container {
+  width: 80px;
+  height: 6px;
+  background: var(--color-border);
+  border-radius: 3px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.participant-bar {
+  height: 100%;
+  background: var(--color-primary);
+  border-radius: 3px;
+  transition: width 0.5s ease;
+  width: 0%;
+}
+
+.participant-pct {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  min-width: 38px;
+  text-align: right;
+}
+
+.participant-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.btn-remove {
+  background: transparent;
+  border: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font-size: 1.1rem;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: all var(--transition);
+}
+
+.btn-remove:hover {
+  background: #fee2e2;
+  color: var(--color-danger);
+}
+
+.chart-section {
+  text-align: center;
+}
+
+.chart-container {
+  max-width: 320px;
+  margin: 0 auto 16px;
+}
+
+.stats-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: center;
+}
+
+.stat-item {
+  background: var(--color-bg);
+  padding: 10px 16px;
+  border-radius: var(--radius);
+  font-size: 0.85rem;
+}
+
+.stat-item strong {
+  display: block;
+  font-size: 1.1rem;
+  color: var(--color-primary);
+}
+
+.history-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.history-header h2 {
+  margin-bottom: 0;
+}
+
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.history-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px;
+  background: var(--color-bg);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.history-card:hover {
+  box-shadow: var(--shadow-lg);
+  transform: translateY(-1px);
+}
+
+.history-card-info h3 {
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.history-card-info p {
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  margin-top: 2px;
+}
+
+.history-card-meta {
+  text-align: right;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+}
+
+.history-card-meta strong {
+  display: block;
+  font-size: 0.95rem;
+  color: var(--color-text);
+}
+
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 16px;
+}
+
+.modal-content {
+  background: var(--color-surface);
+  border-radius: var(--radius);
+  padding: 28px;
+  max-width: 560px;
+  width: 100%;
+  max-height: 85vh;
+  overflow-y: auto;
+  position: relative;
+  box-shadow: var(--shadow-lg);
+}
+
+.modal-close {
+  position: absolute;
+  top: 12px;
+  right: 16px;
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+  color: var(--color-text-muted);
+  line-height: 1;
+}
+
+.modal-close:hover {
+  color: var(--color-text);
+}
+
+.detail-meta {
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+  margin-top: 4px;
+}
+
+.detail-chart-container {
+  max-width: 280px;
+  margin: 20px auto;
+}
+
+.detail-participants {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.detail-participant-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  background: var(--color-bg);
+  border-radius: var(--radius);
+}
+
+.detail-participant-row .name {
+  font-weight: 600;
+}
+
+.detail-participant-row .time {
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.detail-participant-row .pct {
+  font-weight: 700;
+  color: var(--color-primary);
+}
+
+@media (max-width: 520px) {
+  .meeting-info {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .meeting-timer {
+    text-align: center;
+  }
+
+  .meeting-actions {
+    flex-direction: column;
+  }
+
+  .participant-bar-container {
+    display: none;
+  }
+
+  .participant-card {
+    flex-wrap: wrap;
+  }
+}
+  </style>
 </head>
 <body>
   <div class="app">
@@ -85,6 +625,387 @@
     </main>
   </div>
 
-  <script src="js/app.js"></script>
+  <script>
+(function () {
+  'use strict';
+
+  var state = {
+    meetingActive: false,
+    meetingStartTime: null,
+    meetingElapsed: 0,
+    participants: [],
+    nextId: 1,
+    currentSpeaker: null,
+  };
+
+  var meetingTimerInterval = null;
+  var speakingInterval = null;
+  var chart = null;
+  var detailChart = null;
+
+  var AVATAR_COLORS = [
+    '#4f46e5', '#7c3aed', '#db2777', '#ea580c',
+    '#0891b2', '#059669', '#ca8a04', '#dc2626',
+    '#2563eb', '#9333ea', '#c026d3', '#16a34a',
+  ];
+
+  var $ = function(sel) { return document.querySelector(sel); };
+  var $$ = function(sel) { return document.querySelectorAll(sel); };
+
+  var els = {
+    meetingTitle: $('#meeting-title'),
+    meetingTimer: $('#meeting-timer'),
+    btnStart: $('#btn-start-meeting'),
+    btnEnd: $('#btn-end-meeting'),
+    participantName: $('#participant-name'),
+    btnAdd: $('#btn-add-participant'),
+    participantsList: $('#participants-list'),
+    chartSection: $('#chart-section'),
+    chartCanvas: $('#speaking-chart'),
+    statsSummary: $('#stats-summary'),
+    historyList: $('#history-list'),
+    btnClearHistory: $('#btn-clear-history'),
+    historyDetail: $('#history-detail'),
+    modalClose: $('#modal-close'),
+    detailTitle: $('#detail-title'),
+    detailDate: $('#detail-date'),
+    detailDuration: $('#detail-duration'),
+    detailChart: $('#detail-chart'),
+    detailParticipants: $('#detail-participants'),
+  };
+
+  function formatTime(seconds) {
+    var h = Math.floor(seconds / 3600);
+    var m = Math.floor((seconds % 3600) / 60);
+    var s = Math.floor(seconds % 60);
+    return [h, m, s].map(function(v) { return String(v).padStart(2, '0'); }).join(':');
+  }
+
+  function formatDate(ts) {
+    var d = new Date(ts);
+    return d.toLocaleDateString(undefined, {
+      year: 'numeric', month: 'short', day: 'numeric',
+      hour: '2-digit', minute: '2-digit',
+    });
+  }
+
+  function getInitials(name) {
+    return name.split(/\s+/).map(function(w) { return w[0]; }).join('').toUpperCase().slice(0, 2);
+  }
+
+  function getColor(index) {
+    return AVATAR_COLORS[index % AVATAR_COLORS.length];
+  }
+
+  function escapeHtml(str) {
+    var div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  // Tab Navigation
+  $$('.nav-tab').forEach(function(tab) {
+    tab.addEventListener('click', function() {
+      $$('.nav-tab').forEach(function(t) { t.classList.remove('active'); });
+      $$('.tab-content').forEach(function(c) { c.classList.remove('active'); });
+      tab.classList.add('active');
+      $('#tab-' + tab.dataset.tab).classList.add('active');
+      if (tab.dataset.tab === 'history') renderHistory();
+    });
+  });
+
+  // Meeting Controls
+  els.btnStart.addEventListener('click', startMeeting);
+  els.btnEnd.addEventListener('click', endMeeting);
+
+  function startMeeting() {
+    state.meetingActive = true;
+    state.meetingStartTime = Date.now();
+    state.meetingElapsed = 0;
+    els.btnStart.disabled = true;
+    els.btnEnd.disabled = false;
+    meetingTimerInterval = setInterval(updateMeetingTimer, 1000);
+    speakingInterval = setInterval(updateSpeakingTimes, 200);
+    renderParticipants();
+  }
+
+  function endMeeting() {
+    if (state.currentSpeaker !== null) stopSpeaking(state.currentSpeaker);
+    state.meetingActive = false;
+    clearInterval(meetingTimerInterval);
+    clearInterval(speakingInterval);
+    els.btnStart.disabled = false;
+    els.btnEnd.disabled = true;
+    saveMeetingToHistory();
+    renderParticipants();
+    updateChart();
+  }
+
+  function updateMeetingTimer() {
+    state.meetingElapsed = (Date.now() - state.meetingStartTime) / 1000;
+    els.meetingTimer.textContent = formatTime(state.meetingElapsed);
+  }
+
+  // Participants
+  els.btnAdd.addEventListener('click', addParticipant);
+  els.participantName.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') addParticipant();
+  });
+
+  function addParticipant() {
+    var name = els.participantName.value.trim();
+    if (!name) return;
+    state.participants.push({
+      id: state.nextId++, name: name, speakingTime: 0,
+      isSpeaking: false, speakingStart: null, colorIndex: state.participants.length,
+    });
+    els.participantName.value = '';
+    els.participantName.focus();
+    renderParticipants();
+    updateChart();
+  }
+
+  function removeParticipant(id) {
+    if (state.currentSpeaker === id) stopSpeaking(id);
+    state.participants = state.participants.filter(function(p) { return p.id !== id; });
+    renderParticipants();
+    updateChart();
+  }
+
+  function toggleSpeaking(id) {
+    if (!state.meetingActive) return;
+    var participant = state.participants.find(function(p) { return p.id === id; });
+    if (!participant) return;
+    if (participant.isSpeaking) {
+      stopSpeaking(id);
+    } else {
+      if (state.currentSpeaker !== null) stopSpeaking(state.currentSpeaker);
+      startSpeaking(id);
+    }
+    renderParticipants();
+  }
+
+  function startSpeaking(id) {
+    var participant = state.participants.find(function(p) { return p.id === id; });
+    if (!participant) return;
+    participant.isSpeaking = true;
+    participant.speakingStart = Date.now();
+    state.currentSpeaker = id;
+  }
+
+  function stopSpeaking(id) {
+    var participant = state.participants.find(function(p) { return p.id === id; });
+    if (!participant) return;
+    if (participant.isSpeaking && participant.speakingStart) {
+      participant.speakingTime += (Date.now() - participant.speakingStart) / 1000;
+      participant.speakingStart = null;
+    }
+    participant.isSpeaking = false;
+    if (state.currentSpeaker === id) state.currentSpeaker = null;
+  }
+
+  function getLiveSpeakingTime(p) {
+    var time = p.speakingTime;
+    if (p.isSpeaking && p.speakingStart) time += (Date.now() - p.speakingStart) / 1000;
+    return time;
+  }
+
+  function updateSpeakingTimes() {
+    var totalSpeaking = state.participants.reduce(function(sum, p) { return sum + getLiveSpeakingTime(p); }, 0);
+    state.participants.forEach(function(p) {
+      var timeEl = document.querySelector('[data-time-id="' + p.id + '"]');
+      var barEl = document.querySelector('[data-bar-id="' + p.id + '"]');
+      var pctEl = document.querySelector('[data-pct-id="' + p.id + '"]');
+      if (timeEl) timeEl.textContent = formatTime(getLiveSpeakingTime(p));
+      if (barEl && pctEl) {
+        var pct = totalSpeaking > 0 ? (getLiveSpeakingTime(p) / totalSpeaking) * 100 : 0;
+        barEl.style.width = pct + '%';
+        pctEl.textContent = Math.round(pct) + '%';
+      }
+    });
+    updateChart();
+    updateStats();
+  }
+
+  function renderParticipants() {
+    if (state.participants.length === 0) {
+      els.participantsList.innerHTML = '<p class="empty-state">No participants yet. Add someone to get started.</p>';
+      els.chartSection.style.display = 'none';
+      return;
+    }
+    els.chartSection.style.display = '';
+    var totalSpeaking = state.participants.reduce(function(sum, p) { return sum + getLiveSpeakingTime(p); }, 0);
+    els.participantsList.innerHTML = state.participants.map(function(p) {
+      var time = getLiveSpeakingTime(p);
+      var pct = totalSpeaking > 0 ? (time / totalSpeaking) * 100 : 0;
+      var color = getColor(p.colorIndex);
+      var isSpeaking = p.isSpeaking;
+      return '<div class="participant-card ' + (isSpeaking ? 'is-speaking' : '') + '">' +
+        '<div class="participant-avatar" style="background:' + color + '">' + getInitials(p.name) + '</div>' +
+        '<div class="participant-info">' +
+          '<div class="participant-name">' + escapeHtml(p.name) + '</div>' +
+          '<div class="participant-time" data-time-id="' + p.id + '">' + formatTime(time) + '</div>' +
+        '</div>' +
+        '<div class="participant-bar-container">' +
+          '<div class="participant-bar" data-bar-id="' + p.id + '" style="width:' + pct + '%;background:' + color + '"></div>' +
+        '</div>' +
+        '<div class="participant-pct" data-pct-id="' + p.id + '">' + Math.round(pct) + '%</div>' +
+        '<div class="participant-actions">' +
+          '<button class="btn btn-speak btn-small ' + (isSpeaking ? 'speaking' : '') + '" onclick="window.__toggleSpeaking(' + p.id + ')" ' + (!state.meetingActive ? 'disabled' : '') + '>' + (isSpeaking ? 'Stop' : 'Speak') + '</button>' +
+          '<button class="btn-remove" onclick="window.__removeParticipant(' + p.id + ')" title="Remove">&times;</button>' +
+        '</div></div>';
+    }).join('');
+  }
+
+  window.__toggleSpeaking = toggleSpeaking;
+  window.__removeParticipant = removeParticipant;
+
+  // Chart
+  function updateChart() {
+    if (state.participants.length === 0) return;
+    var labels = state.participants.map(function(p) { return p.name; });
+    var data = state.participants.map(function(p) { return Math.round(getLiveSpeakingTime(p)); });
+    var colors = state.participants.map(function(p) { return getColor(p.colorIndex); });
+    if (!chart) {
+      chart = new Chart(els.chartCanvas, {
+        type: 'doughnut',
+        data: { labels: labels, datasets: [{ data: data, backgroundColor: colors, borderWidth: 2, borderColor: '#fff' }] },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: { position: 'bottom', labels: { padding: 16, usePointStyle: true } },
+            tooltip: { callbacks: { label: function(ctx) {
+              var val = ctx.raw;
+              var total = ctx.dataset.data.reduce(function(a, b) { return a + b; }, 0);
+              var pct = total > 0 ? Math.round((val / total) * 100) : 0;
+              return ctx.label + ': ' + formatTime(val) + ' (' + pct + '%)';
+            }}}
+          },
+          cutout: '60%',
+        },
+      });
+    } else {
+      chart.data.labels = labels;
+      chart.data.datasets[0].data = data;
+      chart.data.datasets[0].backgroundColor = colors;
+      chart.update('none');
+    }
+  }
+
+  function updateStats() {
+    if (state.participants.length === 0) return;
+    var totalSpeaking = state.participants.reduce(function(sum, p) { return sum + getLiveSpeakingTime(p); }, 0);
+    var silentTime = Math.max(0, state.meetingElapsed - totalSpeaking);
+    var sorted = state.participants.slice().sort(function(a, b) { return getLiveSpeakingTime(b) - getLiveSpeakingTime(a); });
+    var mostActive = sorted[0];
+    els.statsSummary.innerHTML =
+      '<div class="stat-item"><strong>' + formatTime(state.meetingElapsed) + '</strong>Meeting Duration</div>' +
+      '<div class="stat-item"><strong>' + formatTime(totalSpeaking) + '</strong>Total Speaking</div>' +
+      '<div class="stat-item"><strong>' + formatTime(silentTime) + '</strong>Silent Time</div>' +
+      '<div class="stat-item"><strong>' + escapeHtml(mostActive.name) + '</strong>Most Active</div>';
+  }
+
+  // History
+  var STORAGE_KEY = 'meeting_tracker_history';
+
+  function getHistory() {
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; }
+    catch(e) { return []; }
+  }
+
+  function saveHistory(history) {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(history));
+  }
+
+  function saveMeetingToHistory() {
+    if (state.participants.length === 0) return;
+    var totalSpeaking = state.participants.reduce(function(sum, p) { return sum + getLiveSpeakingTime(p); }, 0);
+    var meeting = {
+      id: Date.now(),
+      title: els.meetingTitle.value.trim() || 'Untitled Meeting',
+      date: state.meetingStartTime,
+      duration: state.meetingElapsed,
+      participants: state.participants.map(function(p) {
+        return {
+          name: p.name,
+          speakingTime: getLiveSpeakingTime(p),
+          percentage: totalSpeaking > 0 ? Math.round((getLiveSpeakingTime(p) / totalSpeaking) * 100) : 0,
+          colorIndex: p.colorIndex,
+        };
+      }),
+    };
+    var history = getHistory();
+    history.unshift(meeting);
+    saveHistory(history);
+  }
+
+  function renderHistory() {
+    var history = getHistory();
+    if (history.length === 0) {
+      els.historyList.innerHTML = '<p class="empty-state">No meeting history yet.</p>';
+      return;
+    }
+    els.historyList.innerHTML = history.map(function(m) {
+      return '<div class="history-card" onclick="window.__showDetail(' + m.id + ')">' +
+        '<div class="history-card-info"><h3>' + escapeHtml(m.title) + '</h3>' +
+        '<p>' + formatDate(m.date) + ' &bull; ' + m.participants.length + ' participants</p></div>' +
+        '<div class="history-card-meta"><strong>' + formatTime(m.duration) + '</strong>duration</div></div>';
+    }).join('');
+  }
+
+  els.btnClearHistory.addEventListener('click', function() {
+    if (confirm('Delete all meeting history?')) {
+      saveHistory([]);
+      renderHistory();
+    }
+  });
+
+  // History Detail Modal
+  window.__showDetail = function(meetingId) {
+    var history = getHistory();
+    var meeting = history.find(function(m) { return m.id === meetingId; });
+    if (!meeting) return;
+    els.detailTitle.textContent = meeting.title;
+    els.detailDate.textContent = formatDate(meeting.date);
+    els.detailDuration.textContent = 'Duration: ' + formatTime(meeting.duration);
+    if (detailChart) detailChart.destroy();
+    var labels = meeting.participants.map(function(p) { return p.name; });
+    var data = meeting.participants.map(function(p) { return Math.round(p.speakingTime); });
+    var colors = meeting.participants.map(function(p) { return getColor(p.colorIndex); });
+    detailChart = new Chart(els.detailChart, {
+      type: 'doughnut',
+      data: { labels: labels, datasets: [{ data: data, backgroundColor: colors, borderWidth: 2, borderColor: '#fff' }] },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: function(ctx) {
+            var val = ctx.raw;
+            var total = ctx.dataset.data.reduce(function(a, b) { return a + b; }, 0);
+            var pct = total > 0 ? Math.round((val / total) * 100) : 0;
+            return ctx.label + ': ' + formatTime(val) + ' (' + pct + '%)';
+          }}}
+        },
+        cutout: '60%',
+      },
+    });
+    var sorted = meeting.participants.slice().sort(function(a, b) { return b.speakingTime - a.speakingTime; });
+    els.detailParticipants.innerHTML = sorted.map(function(p) {
+      return '<div class="detail-participant-row">' +
+        '<span class="name">' + escapeHtml(p.name) + '</span>' +
+        '<span class="time">' + formatTime(p.speakingTime) + '</span>' +
+        '<span class="pct">' + p.percentage + '%</span></div>';
+    }).join('');
+    els.historyDetail.style.display = '';
+  };
+
+  els.modalClose.addEventListener('click', function() { els.historyDetail.style.display = 'none'; });
+  els.historyDetail.addEventListener('click', function(e) {
+    if (e.target === els.historyDetail) els.historyDetail.style.display = 'none';
+  });
+
+  renderHistory();
+})();
+  </script>
 </body>
 </html>
