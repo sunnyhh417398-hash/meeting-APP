@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Meeting Speaking Time Tracker</title>
+  <link rel="stylesheet" href="css/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <div class="app">
+    <!-- Header -->
+    <header class="header">
+      <h1>Meeting Tracker</h1>
+      <p class="subtitle">Track speaking time for every participant</p>
+      <nav class="nav-tabs">
+        <button class="nav-tab active" data-tab="meeting">Current Meeting</button>
+        <button class="nav-tab" data-tab="history">Meeting History</button>
+      </nav>
+    </header>
+
+    <!-- Current Meeting Tab -->
+    <main id="tab-meeting" class="tab-content active">
+      <!-- Meeting Controls -->
+      <section class="meeting-controls">
+        <div class="meeting-info">
+          <input type="text" id="meeting-title" placeholder="Meeting title..." value="Untitled Meeting">
+          <div class="meeting-timer" id="meeting-timer">00:00:00</div>
+        </div>
+        <div class="meeting-actions">
+          <button id="btn-start-meeting" class="btn btn-primary">Start Meeting</button>
+          <button id="btn-end-meeting" class="btn btn-danger" disabled>End Meeting</button>
+        </div>
+      </section>
+
+      <!-- Add Participant -->
+      <section class="add-participant">
+        <input type="text" id="participant-name" placeholder="Participant name..." maxlength="30">
+        <button id="btn-add-participant" class="btn btn-secondary">Add</button>
+      </section>
+
+      <!-- Participants List -->
+      <section class="participants-section">
+        <h2>Participants</h2>
+        <div id="participants-list" class="participants-list">
+          <p class="empty-state">No participants yet. Add someone to get started.</p>
+        </div>
+      </section>
+
+      <!-- Chart Section -->
+      <section class="chart-section" id="chart-section" style="display:none;">
+        <h2>Speaking Time Distribution</h2>
+        <div class="chart-container">
+          <canvas id="speaking-chart"></canvas>
+        </div>
+        <div id="stats-summary" class="stats-summary"></div>
+      </section>
+    </main>
+
+    <!-- History Tab -->
+    <main id="tab-history" class="tab-content">
+      <section class="history-section">
+        <div class="history-header">
+          <h2>Past Meetings</h2>
+          <button id="btn-clear-history" class="btn btn-small btn-danger">Clear All</button>
+        </div>
+        <div id="history-list" class="history-list">
+          <p class="empty-state">No meeting history yet.</p>
+        </div>
+      </section>
+
+      <!-- History Detail Modal -->
+      <div id="history-detail" class="modal" style="display:none;">
+        <div class="modal-content">
+          <button class="modal-close" id="modal-close">&times;</button>
+          <h2 id="detail-title"></h2>
+          <p id="detail-date" class="detail-meta"></p>
+          <p id="detail-duration" class="detail-meta"></p>
+          <div class="detail-chart-container">
+            <canvas id="detail-chart"></canvas>
+          </div>
+          <div id="detail-participants" class="detail-participants"></div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="js/app.js"></script>
+</body>
+</html>
