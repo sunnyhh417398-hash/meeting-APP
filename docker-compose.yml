@@ -1,0 +1,38 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: meeting
+      POSTGRES_PASSWORD: meeting
+      POSTGRES_DB: meeting
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7
+
+  server:
+    build: ./server
+    environment:
+      PORT: 3000
+      JWT_SECRET: "${JWT_SECRET:-change-me}"
+      PG_URL: "postgres://meeting:meeting@postgres:5432/meeting"
+      REDIS_URL: "redis://redis:6379"
+      CORS_ORIGIN: "${CORS_ORIGIN:-http://localhost:5173}"
+    ports:
+      - "3000:3000"
+    depends_on:
+      - postgres
+      - redis
+
+  client-react:
+    build: ./client-react
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_API_BASE: "${VITE_API_BASE:-http://localhost:3000}"
+    depends_on:
+      - server
+
+volumes:
+  pgdata:

@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Meeting SaaS (Vanilla)</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Arial; padding: 16px; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #ddd; padding: 8px; }
+    .actions button { margin-right: 6px; }
+    .badge { padding: 2px 8px; border-radius: 999px; border: 1px solid #aaa; display: inline-block; }
+    .muted { color: #666; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <h2>Meeting LiveBoard (Vanilla)</h2>
+
+  <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:end;">
+    <div>
+      <div class="muted">Server</div>
+      <input id="serverUrl" value="http://localhost:3000" style="width:260px;">
+    </div>
+    <div>
+      <div class="muted">meetingId</div>
+      <input id="meetingId" placeholder="例如: AbCd1234" style="width:160px;">
+    </div>
+    <div>
+      <div class="muted">role token</div>
+      <input id="token" value="host:demo" style="width:160px;">
+    </div>
+    <div>
+      <div class="muted">user name</div>
+      <input id="userName" value="Sunny" style="width:160px;">
+    </div>
+    <button id="btnJoin">Join</button>
+  </div>
+
+  <hr/>
+
+  <div id="hostPanel" style="display:none;">
+    <h3>主持人：新增議員</h3>
+    <input id="mName" placeholder="姓名">
+    <input id="mRole" placeholder="職稱">
+    <button id="btnAdd">新增</button>
+  </div>
+
+  <h3>記名投票名單</h3>
+  <table>
+    <thead>
+      <tr>
+        <th>姓名</th><th>職稱</th><th>投票狀態</th><th>操作</th><th>最後更新</th>
+      </tr>
+    </thead>
+    <tbody id="tbody"></tbody>
+  </table>
+
+  <h3>Audit（最近 50 筆）</h3>
+  <pre id="audit" style="background:#f7f7f7; padding:8px; border:1px solid #eee; overflow:auto;"></pre>
+
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <script>
+    let socket = null;
+    const members = new Map();
+
+    const el = (id) => document.getElementById(id);
+    const fmtTime = (ms) => ms ? new Date(Number(ms)).toLocaleString() : "—";
+    const voteLabel = (v) => v==="Y"?"同意":v==="N"?"反對":v==="A"?"棄權":"未投票";
+
+    function renderTable() {
+      const tbody = el("tbody");
+      tbody.innerHTML = "";
+      for (const m of members.values()) {
+        const tr = document.createElement("tr");
+        tr.dataset.memberId = m.id;
+        tr.innerHTML = `
+          <td>${escapeHtml(m.name)}</td>
+          <td>${escapeHtml(m.role || "一般議員")}</td>
+          <td><span class="badge">${voteLabel(m.vote)}</span></td>
+          <td>
+            <div class="actions">
+              <button class="btnVote" data-v="Y" ${m.locked ? "disabled":""}>同意</button>
+              <button class="btnVote" data-v="N" ${m.locked ? "disabled":""}>反對</button>
+              <button class="btnVote" data-v="A" ${m.locked ? "disabled":""}>棄權</button>
+              <button class="btnRevoke" ${m.vote ? "":"disabled"}>撤銷</button>
+            </div>
+          </td>
+          <td class="muted">${fmtTime(m.updated_at)}</td>
+        `;
+        tr.querySelectorAll(".btnVote").forEach(btn=>{
+          btn.addEventListener("click", ()=>{
+            socket?.emit("submit_vote", { memberId: m.id, vote: btn.dataset.v });
+          });
+        });
+        tr.querySelector(".btnRevoke").addEventListener("click", ()=>{
+          socket?.emit("revoke_vote", { memberId: m.id });
+        });
+        tbody.appendChild(tr);
+      }
+    }
+
+    function escapeHtml(s) {
+      if (!s) return "";
+      return String(s).replace(/[&<>"']/g, c => ({
+        "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+      }[c]));
+    }
+
+    el("btnJoin").onclick = () => {
+      const serverUrl = el("serverUrl").value.trim();
+      const meetingId = el("meetingId").value.trim();
+      const token = el("token").value.trim();
+      const userName = el("userName").value.trim() || "Anonymous";
+
+      if (!serverUrl || !meetingId) return alert("請填 serverUrl 與 meetingId");
+
+      socket = io(serverUrl, { auth: { token } });
+
+      socket.on("connect", () => {
+        socket.emit("join_meeting", { meetingId, user: { id: userName, name: userName } });
+        el("hostPanel").style.display = token.startsWith("host:") ? "block" : "none";
+      });
+
+      socket.on("meeting_snapshot", (snap) => {
+        members.clear();
+        (snap.members || []).forEach(m => members.set(m.id, m));
+        renderTable();
+        el("audit").textContent = JSON.stringify(snap.auditTail || [], null, 2);
+      });
+
+      socket.on("state_patch", (patch) => {
+        if (patch.type === "member_upsert") {
+          members.set(patch.member.id, patch.member);
+          renderTable();
+        }
+        if (patch.type === "member_vote") {
+          const m = members.get(patch.memberId);
+          if (m) {
+            m.vote = patch.vote;
+            m.locked = patch.locked;
+            m.updated_at = patch.updatedAt;
+            renderTable();
+          }
+        }
+      });
+    };
+
+    el("btnAdd").onclick = () => {
+      const name = el("mName").value.trim();
+      const role = el("mRole").value.trim();
+      if (!name) return alert("請輸入姓名");
+      const meetingId = el("meetingId").value.trim();
+      socket?.emit("add_member", { meetingId, name, role });
+      el("mName").value = "";
+      el("mRole").value = "";
+    };
+  </script>
+</body>
+</html>
