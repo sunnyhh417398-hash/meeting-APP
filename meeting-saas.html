@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Meeting SaaS</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Arial, sans-serif; padding: 16px; background: #fafafa; color: #333; }
+    h2 { margin-bottom: 16px; }
+    h3 { margin: 12px 0 8px; }
+    hr { margin: 16px 0; border: none; border-top: 1px solid #ddd; }
+    button { cursor: pointer; padding: 6px 14px; border: 1px solid #aaa; border-radius: 6px; background: #fff; font-size: 13px; }
+    button:hover:not(:disabled) { background: #eee; }
+    button:disabled { opacity: 0.4; cursor: default; }
+    button.primary { background: #2563eb; color: #fff; border-color: #2563eb; }
+    button.primary:hover:not(:disabled) { background: #1d4ed8; }
+    button.danger { background: #dc2626; color: #fff; border-color: #dc2626; }
+    button.danger:hover:not(:disabled) { background: #b91c1c; }
+    button.agree { background: #16a34a; color: #fff; border-color: #16a34a; }
+    button.agree:hover:not(:disabled) { background: #15803d; }
+    button.oppose { background: #dc2626; color: #fff; border-color: #dc2626; }
+    button.oppose:hover:not(:disabled) { background: #b91c1c; }
+    button.abstain { background: #ca8a04; color: #fff; border-color: #ca8a04; }
+    button.abstain:hover:not(:disabled) { background: #a16207; }
+    input, select { padding: 6px 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 13px; }
+    table { border-collapse: collapse; width: 100%; margin-top: 8px; }
+    th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+    th { background: #f3f4f6; font-weight: 600; }
+    .card { border: 1px solid #e5e7eb; padding: 16px; border-radius: 12px; background: #fff; margin-bottom: 12px; }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .flex { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .muted { color: #666; font-size: 12px; }
+    .badge { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+    .badge-pending { background: #f3f4f6; color: #666; border: 1px solid #ccc; }
+    .badge-agree { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
+    .badge-oppose { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+    .badge-abstain { background: #fef9c3; color: #854d0e; border: 1px solid #fde047; }
+    .tabs { display: flex; gap: 0; margin-bottom: 16px; }
+    .tabs button { border-radius: 0; border: 1px solid #ccc; margin-right: -1px; padding: 8px 20px; }
+    .tabs button.active { background: #2563eb; color: #fff; border-color: #2563eb; }
+    .hidden { display: none; }
+    .stats { display: flex; gap: 24px; margin: 12px 0; }
+    .stat-box { text-align: center; }
+    .stat-box .num { font-size: 28px; font-weight: 700; }
+    .stat-box .label { font-size: 12px; color: #666; }
+    #auditLog { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px; max-height: 300px; overflow: auto; font-size: 12px; font-family: monospace; }
+    .flow-step { padding: 6px 12px; border-left: 3px solid #ccc; margin-bottom: 4px; cursor: pointer; }
+    .flow-step:hover { background: #f3f4f6; }
+    .flow-step.active { border-left-color: #2563eb; background: #eff6ff; font-weight: 600; }
+    .flow-step.done { border-left-color: #16a34a; color: #666; }
+    @media (max-width: 768px) {
+      .grid2 { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <h2>Meeting SaaS</h2>
+
+  <!-- TABS -->
+  <div class="tabs">
+    <button class="active" onclick="showTab('meeting')">Meeting</button>
+    <button onclick="showTab('history')">History</button>
+  </div>
+
+  <!-- ==================== MEETING TAB ==================== -->
+  <div id="tab-meeting">
+
+    <!-- LOGIN -->
+    <div class="card">
+      <h3>1) Login</h3>
+      <div class="flex" style="margin-top:8px;">
+        <input id="loginSchool" value="soochow" placeholder="School ID" />
+        <input id="loginUser" value="sunny" placeholder="User ID" />
+        <input id="loginName" value="Sunny" placeholder="Name" />
+        <select id="loginRole">
+          <option value="host">host</option>
+          <option value="admin">admin</option>
+          <option value="member">member</option>
+          <option value="viewer">viewer</option>
+        </select>
+        <button class="primary" onclick="doLogin()">Login</button>
+      </div>
+      <div class="muted" style="margin-top:6px;">
+        Status: <span id="loginStatus">Not logged in</span>
+      </div>
+    </div>
+
+    <!-- CREATE / JOIN -->
+    <div class="grid2">
+      <div class="card">
+        <h3>2) Create Meeting</h3>
+        <div class="flex" style="margin-top:8px;">
+          <input id="newMeetingTitle" placeholder="Meeting title" style="flex:1;" />
+          <button class="primary" onclick="createMeeting()">Create</button>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Or Join Existing</h3>
+        <div class="flex" style="margin-top:8px;">
+          <select id="meetingSelect" style="flex:1;"><option value="">-- Select --</option></select>
+          <button class="primary" onclick="joinMeeting()">Join</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ACTIVE MEETING -->
+    <div id="activeMeeting" class="hidden">
+      <hr />
+      <div class="flex" style="justify-content:space-between; align-items:center;">
+        <h3 id="meetingTitle" style="margin:0;"></h3>
+        <div class="flex">
+          <button onclick="exportCsv()">Export CSV</button>
+          <button class="danger" onclick="endMeeting()">End Meeting</button>
+        </div>
+      </div>
+
+      <!-- AGENDA FLOW -->
+      <div class="grid2" style="margin-top:12px;">
+        <div class="card">
+          <h3>Agenda Flow</h3>
+          <div id="agendaFlow"></div>
+        </div>
+
+        <!-- HOST CONTROLS -->
+        <div id="hostControls" class="card">
+          <h3>Host: Add Member</h3>
+          <div class="flex" style="margin-top:8px;">
+            <input id="memberName" placeholder="Name" />
+            <input id="memberRole" placeholder="Title" />
+            <button onclick="addMember()">Add</button>
+          </div>
+          <h3 style="margin-top:16px;">Host: Create Motion</h3>
+          <div class="flex" style="margin-top:8px;">
+            <input id="motionTitle" placeholder="Motion title" style="flex:1;" />
+            <button onclick="openMotion()">Open</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- CURRENT MOTION -->
+      <div class="card" style="margin-top:12px;">
+        <h3>Current Motion</h3>
+        <select id="motionSelect" onchange="selectMotion()" style="margin-top:8px; min-width:300px;">
+          <option value="">(None)</option>
+        </select>
+      </div>
+
+      <!-- VOTE STATS -->
+      <div class="stats" id="voteStats">
+        <div class="stat-box"><div class="num" id="statAgree" style="color:#16a34a;">0</div><div class="label">Agree</div></div>
+        <div class="stat-box"><div class="num" id="statOppose" style="color:#dc2626;">0</div><div class="label">Oppose</div></div>
+        <div class="stat-box"><div class="num" id="statAbstain" style="color:#ca8a04;">0</div><div class="label">Abstain</div></div>
+        <div class="stat-box"><div class="num" id="statPending" style="color:#666;">0</div><div class="label">Pending</div></div>
+        <div class="stat-box"><div class="num" id="statTotal">0</div><div class="label">Total</div></div>
+      </div>
+
+      <!-- ROLL CALL TABLE -->
+      <h3>Roll Call Vote (locked after voting, host can revoke)</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th><th>Title</th><th>Vote</th><th>Actions</th><th>Time</th>
+          </tr>
+        </thead>
+        <tbody id="memberTbody"></tbody>
+      </table>
+
+      <!-- AUDIT LOG -->
+      <h3 style="margin-top:16px;">Audit Log</h3>
+      <div id="auditLog"></div>
+    </div>
+  </div>
+
+  <!-- ==================== HISTORY TAB ==================== -->
+  <div id="tab-history" class="hidden">
+    <h3>Meeting History</h3>
+    <div id="historyList"></div>
+  </div>
+
+  <!-- ==================== ALL JAVASCRIPT (INLINE) ==================== -->
+  <script>
+    // ===== STATE =====
+    let currentUser = null;
+    let currentMeeting = null;
+    let currentMotionId = "";
+    let currentFlowStep = 0;
+
+    const FLOW = [
+      "1. Call to Order",
+      "2. Agenda Approval",
+      "3. Minutes Approval",
+      "4. Chair Report",
+      "5. Committee Reports",
+      "6. Motion Discussion",
+      "7. New Business",
+      "8. Statements and Addenda",
+      "9. Adjournment"
+    ];
+
+    // ===== STORAGE =====
+    function loadMeetings() {
+      return JSON.parse(localStorage.getItem("meetings") || "{}");
+    }
+    function saveMeetings(m) {
+      localStorage.setItem("meetings", JSON.stringify(m));
+    }
+    function getMeeting(id) {
+      return loadMeetings()[id] || null;
+    }
+    function setMeeting(id, data) {
+      const all = loadMeetings();
+      all[id] = data;
+      saveMeetings(all);
+    }
+
+    // ===== AUDIT =====
+    function audit(action, detail) {
+      if (!currentMeeting) return;
+      const entry = {
+        ts: Date.now(),
+        actor: currentUser?.name || "System",
+        action,
+        detail: typeof detail === "string" ? detail : JSON.stringify(detail)
+      };
+      currentMeeting.audit.push(entry);
+      setMeeting(currentMeeting.id, currentMeeting);
+      renderAudit();
+    }
+
+    // ===== SHA-256 HASH (for non-repudiation display) =====
+    async function sha256(text) {
+      const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+      return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
+    }
+
+    // ===== ID GENERATOR =====
+    function uid() {
+      return Math.random().toString(36).slice(2, 10);
+    }
+
+    // ===== TABS =====
+    function showTab(name) {
+      document.querySelectorAll(".tabs button").forEach(b => b.classList.remove("active"));
+      document.querySelectorAll("[id^='tab-']").forEach(t => t.classList.add("hidden"));
+      document.getElementById("tab-" + name).classList.remove("hidden");
+      event.target.classList.add("active");
+      if (name === "history") renderHistory();
+    }
+
+    // ===== LOGIN =====
+    function doLogin() {
+      const schoolId = document.getElementById("loginSchool").value.trim();
+      const userId = document.getElementById("loginUser").value.trim();
+      const name = document.getElementById("loginName").value.trim();
+      const role = document.getElementById("loginRole").value;
+      if (!schoolId || !userId || !name) return alert("Please fill all login fields");
+      currentUser = { schoolId, userId, name, role };
+      document.getElementById("loginStatus").textContent = name + " (" + role + ") @ " + schoolId;
+      refreshMeetingList();
+    }
+
+    // ===== CREATE MEETING =====
+    function createMeeting() {
+      if (!currentUser) return alert("Please login first");
+      if (currentUser.role !== "host" && currentUser.role !== "admin") return alert("Only host/admin can create meetings");
+      const title = document.getElementById("newMeetingTitle").value.trim() || "General Meeting";
+      const id = uid();
+      const meeting = {
+        id,
+        schoolId: currentUser.schoolId,
+        title,
+        status: "ACTIVE",
+        createdAt: Date.now(),
+        flowStep: 0,
+        members: [],
+        motions: [],
+        audit: []
+      };
+      setMeeting(id, meeting);
+      document.getElementById("newMeetingTitle").value = "";
+      refreshMeetingList();
+      alert("Meeting created: " + title + " (ID: " + id + ")");
+    }
+
+    // ===== MEETING LIST =====
+    function refreshMeetingList() {
+      const sel = document.getElementById("meetingSelect");
+      sel.innerHTML = '<option value="">-- Select --</option>';
+      const all = loadMeetings();
+      Object.values(all)
+        .filter(m => !currentUser || m.schoolId === currentUser.schoolId)
+        .sort((a, b) => b.createdAt - a.createdAt)
+        .forEach(m => {
+          const opt = document.createElement("option");
+          opt.value = m.id;
+          opt.textContent = m.title + " [" + m.status + "] (" + m.id + ")";
+          sel.appendChild(opt);
+        });
+    }
+
+    // ===== JOIN MEETING =====
+    function joinMeeting() {
+      if (!currentUser) return alert("Please login first");
+      const id = document.getElementById("meetingSelect").value;
+      if (!id) return alert("Please select a meeting");
+      currentMeeting = getMeeting(id);
+      if (!currentMeeting) return alert("Meeting not found");
+      currentMotionId = "";
+      currentFlowStep = currentMeeting.flowStep || 0;
+      document.getElementById("activeMeeting").classList.remove("hidden");
+      document.getElementById("meetingTitle").textContent = currentMeeting.title;
+
+      const isHost = currentUser.role === "host" || currentUser.role === "admin";
+      document.getElementById("hostControls").style.display = isHost ? "block" : "none";
+
+      audit("JOIN", currentUser.name + " joined as " + currentUser.role);
+      renderAll();
+    }
+
+    // ===== END MEETING =====
+    function endMeeting() {
+      if (!currentMeeting) return;
+      if (!confirm("End this meeting?")) return;
+      currentMeeting.status = "ENDED";
+      currentMeeting.endedAt = Date.now();
+      audit("END_MEETING", "Meeting ended");
+      setMeeting(currentMeeting.id, currentMeeting);
+      document.getElementById("activeMeeting").classList.add("hidden");
+      currentMeeting = null;
+      refreshMeetingList();
+    }
+
+    // ===== AGENDA FLOW =====
+    function renderFlow() {
+      const container = document.getElementById("agendaFlow");
+      container.innerHTML = "";
+      FLOW.forEach((step, i) => {
+        const div = document.createElement("div");
+        div.className = "flow-step" + (i === currentFlowStep ? " active" : "") + (i < currentFlowStep ? " done" : "");
+        div.textContent = step;
+        div.onclick = () => {
+          if (currentUser?.role !== "host" && currentUser?.role !== "admin") return;
+          currentFlowStep = i;
+          if (currentMeeting) {
+            currentMeeting.flowStep = i;
+            setMeeting(currentMeeting.id, currentMeeting);
+            audit("FLOW_STEP", "Moved to: " + step);
+          }
+          renderFlow();
+        };
+        container.appendChild(div);
+      });
+    }
+
+    // ===== ADD MEMBER =====
+    function addMember() {
+      if (!currentMeeting) return;
+      const name = document.getElementById("memberName").value.trim();
+      const role = document.getElementById("memberRole").value.trim() || "Member";
+      if (!name) return alert("Please enter a name");
+
+      const member = { id: uid(), name, role, vote: null, locked: false, updatedAt: null };
+      currentMeeting.members.push(member);
+      setMeeting(currentMeeting.id, currentMeeting);
+      audit("ADD_MEMBER", { name, role });
+
+      document.getElementById("memberName").value = "";
+      document.getElementById("memberRole").value = "";
+      renderMembers();
+    }
+
+    // ===== MOTIONS =====
+    function openMotion() {
+      if (!currentMeeting) return;
+      const title = document.getElementById("motionTitle").value.trim();
+      if (!title) return alert("Please enter a motion title");
+
+      // Reset all member votes for new motion
+      currentMeeting.members.forEach(m => { m.vote = null; m.locked = false; m.updatedAt = null; });
+
+      const motion = { id: uid(), title, status: "OPEN", createdAt: Date.now(), closedAt: null };
+      currentMeeting.motions.push(motion);
+      currentMotionId = motion.id;
+      setMeeting(currentMeeting.id, currentMeeting);
+      audit("OPEN_MOTION", { title });
+
+      document.getElementById("motionTitle").value = "";
+      renderMotions();
+      renderMembers();
+    }
+
+    function selectMotion() {
+      currentMotionId = document.getElementById("motionSelect").value;
+      renderMembers();
+    }
+
+    function renderMotions() {
+      const sel = document.getElementById("motionSelect");
+      sel.innerHTML = '<option value="">(None)</option>';
+      if (!currentMeeting) return;
+      currentMeeting.motions.forEach(m => {
+        const opt = document.createElement("option");
+        opt.value = m.id;
+        opt.textContent = m.title + " [" + m.status + "]";
+        if (m.id === currentMotionId) opt.selected = true;
+        sel.appendChild(opt);
+      });
+    }
+
+    // ===== VOTING =====
+    function submitVote(memberId, choice) {
+      if (!currentMeeting || !currentMotionId) return alert("Please select a motion first");
+      const member = currentMeeting.members.find(m => m.id === memberId);
+      if (!member || member.locked) return;
+
+      member.vote = choice;
+      member.locked = true;
+      member.updatedAt = Date.now();
+      setMeeting(currentMeeting.id, currentMeeting);
+      audit("VOTE", { member: member.name, choice, motionId: currentMotionId });
+      renderMembers();
+    }
+
+    function revokeVote(memberId) {
+      if (!currentMeeting) return;
+      const isHost = currentUser?.role === "host" || currentUser?.role === "admin";
+      if (!isHost) return;
+
+      const member = currentMeeting.members.find(m => m.id === memberId);
+      if (!member) return;
+
+      member.vote = null;
+      member.locked = false;
+      member.updatedAt = Date.now();
+      setMeeting(currentMeeting.id, currentMeeting);
+      audit("REVOKE", { member: member.name, motionId: currentMotionId });
+      renderMembers();
+    }
+
+    function removeMember(memberId) {
+      if (!currentMeeting) return;
+      const member = currentMeeting.members.find(m => m.id === memberId);
+      if (!member) return;
+      currentMeeting.members = currentMeeting.members.filter(m => m.id !== memberId);
+      setMeeting(currentMeeting.id, currentMeeting);
+      audit("REMOVE_MEMBER", { name: member.name });
+      renderMembers();
+    }
+
+    // ===== RENDER MEMBERS TABLE =====
+    function voteLabel(v) {
+      if (v === "Y") return "Agree";
+      if (v === "N") return "Oppose";
+      if (v === "A") return "Abstain";
+      return "Not Voted";
+    }
+    function voteBadgeClass(v) {
+      if (v === "Y") return "badge badge-agree";
+      if (v === "N") return "badge badge-oppose";
+      if (v === "A") return "badge badge-abstain";
+      return "badge badge-pending";
+    }
+    function esc(s) {
+      if (!s) return "";
+      return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+    }
+
+    function renderMembers() {
+      const tbody = document.getElementById("memberTbody");
+      tbody.innerHTML = "";
+      if (!currentMeeting) return;
+
+      const isHost = currentUser?.role === "host" || currentUser?.role === "admin";
+      const canVote = currentUser?.role !== "viewer";
+      let agree = 0, oppose = 0, abstain = 0, pending = 0;
+
+      currentMeeting.members.forEach(m => {
+        if (m.vote === "Y") agree++;
+        else if (m.vote === "N") oppose++;
+        else if (m.vote === "A") abstain++;
+        else pending++;
+
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${esc(m.name)}</td>
+          <td>${esc(m.role)}</td>
+          <td><span class="${voteBadgeClass(m.vote)}">${voteLabel(m.vote)}</span></td>
+          <td class="flex">
+            <button class="agree" ${m.locked || !canVote ? "disabled" : ""} onclick="submitVote('${m.id}','Y')">Agree</button>
+            <button class="oppose" ${m.locked || !canVote ? "disabled" : ""} onclick="submitVote('${m.id}','N')">Oppose</button>
+            <button class="abstain" ${m.locked || !canVote ? "disabled" : ""} onclick="submitVote('${m.id}','A')">Abstain</button>
+            ${isHost ? `<button class="danger" onclick="revokeVote('${m.id}')" ${!m.vote ? "disabled" : ""}>Revoke</button>` : ""}
+            ${isHost ? `<button onclick="removeMember('${m.id}')">Remove</button>` : ""}
+          </td>
+          <td class="muted">${m.updatedAt ? new Date(m.updatedAt).toLocaleString() : "—"}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+
+      const total = currentMeeting.members.length;
+      document.getElementById("statAgree").textContent = agree;
+      document.getElementById("statOppose").textContent = oppose;
+      document.getElementById("statAbstain").textContent = abstain;
+      document.getElementById("statPending").textContent = pending;
+      document.getElementById("statTotal").textContent = total;
+    }
+
+    // ===== RENDER AUDIT =====
+    function renderAudit() {
+      const el = document.getElementById("auditLog");
+      if (!currentMeeting) { el.textContent = ""; return; }
+      const lines = currentMeeting.audit.slice(-50).reverse().map(e =>
+        `[${new Date(e.ts).toLocaleString()}] ${e.actor} — ${e.action}: ${e.detail}`
+      );
+      el.textContent = lines.join("\n");
+    }
+
+    // ===== RENDER ALL =====
+    function renderAll() {
+      renderFlow();
+      renderMotions();
+      renderMembers();
+      renderAudit();
+    }
+
+    // ===== EXPORT CSV =====
+    function exportCsv() {
+      if (!currentMeeting) return;
+      const header = "Name,Title,Vote,Locked,Updated At";
+      const rows = currentMeeting.members.map(m =>
+        `"${m.name}","${m.role}","${voteLabel(m.vote)}","${m.locked}","${m.updatedAt ? new Date(m.updatedAt).toLocaleString() : ""}"`
+      );
+      const motionHeader = "\n\nMotions\nTitle,Status,Created At";
+      const motionRows = currentMeeting.motions.map(m =>
+        `"${m.title}","${m.status}","${new Date(m.createdAt).toLocaleString()}"`
+      );
+      const auditHeader = "\n\nAudit Log\nTime,Actor,Action,Detail";
+      const auditRows = currentMeeting.audit.map(e =>
+        `"${new Date(e.ts).toLocaleString()}","${e.actor}","${e.action}","${e.detail}"`
+      );
+
+      const csv = [header, ...rows, motionHeader, ...motionRows, auditHeader, ...auditRows].join("\n");
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "meeting_" + currentMeeting.id + ".csv";
+      a.click();
+    }
+
+    // ===== HISTORY =====
+    function renderHistory() {
+      const el = document.getElementById("historyList");
+      const all = loadMeetings();
+      const list = Object.values(all).sort((a, b) => b.createdAt - a.createdAt);
+      if (!list.length) { el.innerHTML = '<div class="muted">No meetings yet.</div>'; return; }
+
+      el.innerHTML = list.map(m => `
+        <div class="card">
+          <div class="flex" style="justify-content:space-between;">
+            <div>
+              <strong>${esc(m.title)}</strong>
+              <span class="badge ${m.status === 'ACTIVE' ? 'badge-agree' : 'badge-pending'}" style="margin-left:8px;">${m.status}</span>
+            </div>
+            <div class="muted">${new Date(m.createdAt).toLocaleString()}</div>
+          </div>
+          <div class="muted" style="margin-top:4px;">
+            ID: ${m.id} | School: ${esc(m.schoolId)} | Members: ${m.members?.length || 0} | Motions: ${m.motions?.length || 0}
+          </div>
+          <div style="margin-top:8px;">
+            <button onclick="deleteMeeting('${m.id}')">Delete</button>
+          </div>
+        </div>
+      `).join("");
+    }
+
+    function deleteMeeting(id) {
+      if (!confirm("Delete this meeting permanently?")) return;
+      const all = loadMeetings();
+      delete all[id];
+      saveMeetings(all);
+      if (currentMeeting?.id === id) {
+        currentMeeting = null;
+        document.getElementById("activeMeeting").classList.add("hidden");
+      }
+      refreshMeetingList();
+      renderHistory();
+    }
+
+    // ===== INIT =====
+    refreshMeetingList();
+  </script>
+</body>
+</html>

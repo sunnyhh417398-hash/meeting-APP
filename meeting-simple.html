@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Meeting — Quick Vote</title>
+  <style>
+    body { font-family: system-ui, sans-serif; padding: 20px; max-width: 900px; margin: 0 auto; }
+    h2 { margin-bottom: 12px; }
+    button { cursor: pointer; padding: 6px 14px; border: 1px solid #aaa; border-radius: 6px; background: #fff; margin: 2px; }
+    button:hover:not(:disabled) { background: #eee; }
+    button:disabled { opacity: 0.4; }
+    button.g { background: #16a34a; color: #fff; border-color: #16a34a; }
+    button.r { background: #dc2626; color: #fff; border-color: #dc2626; }
+    button.y { background: #ca8a04; color: #fff; border-color: #ca8a04; }
+    input { padding: 6px 10px; border: 1px solid #ccc; border-radius: 6px; }
+    table { border-collapse: collapse; width: 100%; margin-top: 10px; }
+    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+    th { background: #f3f4f6; }
+    .s { display: flex; gap: 20px; margin: 12px 0; }
+    .s div { text-align: center; }
+    .s .n { font-size: 24px; font-weight: 700; }
+    .s .l { font-size: 11px; color: #666; }
+    .m { color: #666; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <h2>Quick Vote</h2>
+
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+    <input id="n" placeholder="Member name" />
+    <input id="t" placeholder="Title" value="Member" />
+    <button onclick="add()">Add Member</button>
+    <button onclick="reset()">Reset All Votes</button>
+    <button onclick="dl()">Export CSV</button>
+  </div>
+
+  <div class="s">
+    <div><div class="n" id="sa" style="color:#16a34a">0</div><div class="l">Agree</div></div>
+    <div><div class="n" id="so" style="color:#dc2626">0</div><div class="l">Oppose</div></div>
+    <div><div class="n" id="sb" style="color:#ca8a04">0</div><div class="l">Abstain</div></div>
+    <div><div class="n" id="sp" style="color:#666">0</div><div class="l">Pending</div></div>
+  </div>
+
+  <table>
+    <thead><tr><th>Name</th><th>Title</th><th>Vote</th><th>Actions</th></tr></thead>
+    <tbody id="tb"></tbody>
+  </table>
+
+  <script>
+    let M = JSON.parse(localStorage.getItem("qv_members") || "[]");
+
+    function save() { localStorage.setItem("qv_members", JSON.stringify(M)); }
+    function e(s) { return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+    function vl(v) { return v==="Y"?"Agree":v==="N"?"Oppose":v==="A"?"Abstain":"—"; }
+
+    function render() {
+      const tb = document.getElementById("tb");
+      tb.innerHTML = "";
+      let a=0,o=0,b=0,p=0;
+      M.forEach((m,i) => {
+        if(m.v==="Y")a++; else if(m.v==="N")o++; else if(m.v==="A")b++; else p++;
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${e(m.n)}</td><td>${e(m.t)}</td><td>${vl(m.v)}</td>
+          <td>
+            <button class="g" ${m.v?"disabled":""} onclick="vote(${i},'Y')">Agree</button>
+            <button class="r" ${m.v?"disabled":""} onclick="vote(${i},'N')">Oppose</button>
+            <button class="y" ${m.v?"disabled":""} onclick="vote(${i},'A')">Abstain</button>
+            <button onclick="rev(${i})" ${!m.v?"disabled":""}>Revoke</button>
+            <button onclick="del(${i})">X</button>
+          </td>`;
+        tb.appendChild(tr);
+      });
+      document.getElementById("sa").textContent=a;
+      document.getElementById("so").textContent=o;
+      document.getElementById("sb").textContent=b;
+      document.getElementById("sp").textContent=p;
+    }
+
+    function add() {
+      const n = document.getElementById("n").value.trim();
+      const t = document.getElementById("t").value.trim() || "Member";
+      if(!n) return alert("Enter a name");
+      M.push({n,t,v:null});
+      save(); render();
+      document.getElementById("n").value="";
+    }
+
+    function vote(i,c) { M[i].v=c; save(); render(); }
+    function rev(i) { M[i].v=null; save(); render(); }
+    function del(i) { M.splice(i,1); save(); render(); }
+    function reset() { M.forEach(m=>m.v=null); save(); render(); }
+
+    function dl() {
+      const csv = "Name,Title,Vote\n" + M.map(m=>`"${m.n}","${m.t}","${vl(m.v)}"`).join("\n");
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(new Blob([csv],{type:"text/csv"}));
+      a.download = "votes.csv";
+      a.click();
+    }
+
+    render();
+  </script>
+</body>
+</html>
