@@ -1,11 +1,11 @@
 export const MEETING_FLOW = [
-  "一、開會宣告",
-  "二、議程確立",
-  "三、議事錄確立",
-  "四、主席報告",
-  "五、委員會報告",
-  "六、提案討論",
-  "七、臨時動議",
-  "八、聲明及補述",
-  "九、散會宣告"
+  "1. Call to Order",
+  "2. Agenda Approval",
+  "3. Minutes Approval",
+  "4. Chair Report",
+  "5. Committee Reports",
+  "6. Motion Discussion",
+  "7. New Business",
+  "8. Statements and Addenda",
+  "9. Adjournment"
 ];

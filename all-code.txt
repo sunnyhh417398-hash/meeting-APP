@@ -1,40 +1,6 @@
 ================================================================================
 Meeting SaaS - Complete Source Code
 ================================================================================
-Repo Structure:
-  .gitignore
-  .env.example
-  docker-compose.yml
-  README.md
-  server/
-    Dockerfile
-    package.json
-    src/
-      index.js
-      auth.js
-      rbac.js
-      db.js
-      store.js
-      audit.js
-      export.js
-      agenda.js
-      socket.js
-  client-react/
-    Dockerfile
-    package.json
-    vite.config.js
-    index.html
-    src/
-      main.jsx
-      App.jsx
-      api.js
-  client-vanilla/
-    index.html
-  deploy/
-    backup.sh
-    restore.sh
-    backups/.gitkeep
-================================================================================
 
 
 ================================================================================
@@ -46,7 +12,6 @@ dist
 .DS_Store
 deploy/backups/*.sql.gz
 
-
 ================================================================================
 FILE: .env.example
 ================================================================================
@@ -56,7 +21,6 @@ PG_URL=postgres://meeting:meeting@localhost:5432/meeting
 REDIS_URL=redis://localhost:6379
 CORS_ORIGIN=http://localhost:5173
 VITE_API_BASE=http://localhost:3000
-
 
 ================================================================================
 FILE: docker-compose.yml
@@ -100,7 +64,6 @@ services:
 volumes:
   pgdata:
 
-
 ================================================================================
 FILE: README.md
 ================================================================================
@@ -120,7 +83,7 @@ A full-stack meeting management system with realtime voting, designed for school
 - Meeting flow (agenda steps 1-9)
 - React frontend + Vanilla HTML frontend
 - Docker Compose one-command deploy
-- Speaking time tracker (standalone index.html)
+- Speaking time tracker (standalone `index.html`)
 
 ## Quick Start
 
@@ -137,12 +100,54 @@ docker compose up --build
 ## Login Demo
 
 Use the React UI login fields:
-- schoolId: soochow
-- userId: sunny
-- name: Sunny
-- role: host (or member / viewer)
+- schoolId: `soochow`
+- userId: `sunny`
+- name: `Sunny`
+- role: `host` (or `member` / `viewer`)
 
-Then: Create meeting -> Join -> Add members -> Open motion -> Vote
+Then: **Create meeting** -> **Join** -> **Add members** -> **Open motion** -> **Vote**
+
+## Project Structure
+
+```
+meeting-APP/
+  index.html                 # Standalone speaking time tracker
+  docker-compose.yml
+  .env.example
+  .gitignore
+
+  server/                    # Node.js + Express + Socket.IO
+    Dockerfile
+    package.json
+    src/
+      index.js               # REST endpoints + server startup
+      auth.js                # JWT sign/verify/middleware
+      rbac.js                # Role-based access control
+      db.js                  # Postgres pool + auto-create tables
+      store.js               # Redis snapshot cache
+      audit.js               # Hash-chain audit log
+      export.js              # PDF + CSV export
+      agenda.js              # Meeting flow (steps 1-9)
+      socket.js              # Socket.IO events (realtime sync)
+
+  client-react/              # React + Vite frontend
+    Dockerfile
+    package.json
+    vite.config.js
+    index.html
+    src/
+      main.jsx
+      App.jsx                # Full UI: login, meetings, voting
+      api.js                 # REST API helpers
+
+  client-vanilla/            # Vanilla HTML/JS (simple demo)
+    index.html
+
+  deploy/                    # Self-hosted deployment tools
+    backup.sh                # Postgres backup script
+    restore.sh               # Postgres restore script
+    backups/                 # Backup files (gitignored)
+```
 
 ## Backup & Restore
 
@@ -163,9 +168,9 @@ bash deploy/restore.sh deploy/backups/<file.sql.gz>
 
 ### Steps
 1. Clone this repo
-2. Copy .env.example to .env and set JWT_SECRET
-3. Run: docker compose up -d --build
-4. Access React UI at http://<server-ip>:5173
+2. Copy `.env.example` to `.env` and set `JWT_SECRET`
+3. Run `docker compose up -d --build`
+4. Access React UI at `http://<server-ip>:5173`
 
 ### Update
 ```bash
@@ -173,12 +178,19 @@ git pull
 docker compose up -d --build
 ```
 
+## Speaking Time Tracker (Standalone)
+
+Open `index.html` directly in a browser for a simple speaking time tracker:
+1. Add participant names
+2. Click **Start Meeting**
+3. Click **Speak** next to whoever is talking
+4. Click **End Meeting** to save the session
+
 ## Security Notes
 - Postgres and Redis are not exposed externally (internal Docker network only)
 - Audit log uses SHA-256 hash chain for non-repudiation
 - JWT tokens expire after 12 hours
 - Vote locking prevents ballot tampering (only host can revoke)
-
 
 ================================================================================
 FILE: server/package.json
@@ -202,7 +214,6 @@ FILE: server/package.json
   }
 }
 
-
 ================================================================================
 FILE: server/Dockerfile
 ================================================================================
@@ -213,7 +224,6 @@ RUN npm i --omit=dev
 COPY src ./src
 EXPOSE 3000
 CMD ["node", "src/index.js"]
-
 
 ================================================================================
 FILE: server/src/db.js
@@ -293,7 +303,6 @@ export async function initDb() {
   `);
 }
 
-
 ================================================================================
 FILE: server/src/auth.js
 ================================================================================
@@ -323,7 +332,6 @@ export function requireAuth(req, res, next) {
   }
 }
 
-
 ================================================================================
 FILE: server/src/rbac.js
 ================================================================================
@@ -340,7 +348,6 @@ export function requireRole(needRole) {
     next();
   };
 }
-
 
 ================================================================================
 FILE: server/src/audit.js
@@ -377,7 +384,6 @@ export async function appendAudit({
   return { id, prevHash, hash };
 }
 
-
 ================================================================================
 FILE: server/src/store.js
 ================================================================================
@@ -395,22 +401,20 @@ export async function setSnapshot(schoolId, meetingId, snap) {
   await redis.set(key(schoolId, meetingId), JSON.stringify(snap), "EX", 60 * 60 * 6);
 }
 
-
 ================================================================================
 FILE: server/src/agenda.js
 ================================================================================
 export const MEETING_FLOW = [
-  "一、開會宣告",
-  "二、議程確立",
-  "三、議事錄確立",
-  "四、主席報告",
-  "五、委員會報告",
-  "六、提案討論",
-  "七、臨時動議",
-  "八、聲明及補述",
-  "九、散會宣告"
+  "1. Call to Order",
+  "2. Agenda Approval",
+  "3. Minutes Approval",
+  "4. Chair Report",
+  "5. Committee Reports",
+  "6. Motion Discussion",
+  "7. New Business",
+  "8. Statements and Addenda",
+  "9. Adjournment"
 ];
-
 
 ================================================================================
 FILE: server/src/export.js
@@ -465,7 +469,7 @@ export async function exportPdf(res, meetingId, schoolId) {
   doc.moveDown(0.5);
   members.rows.forEach(m => {
     doc.fontSize(12).text(
-      `${m.role} | ${m.name} | ${m.vote ?? "未投票"} | ${m.updated_at ? new Date(Number(m.updated_at)).toLocaleString() : "-"}`
+      `${m.role} | ${m.name} | ${m.vote ?? "Not Voted"} | ${m.updated_at ? new Date(Number(m.updated_at)).toLocaleString() : "-"}`
     );
   });
 
@@ -480,7 +484,6 @@ export async function exportPdf(res, meetingId, schoolId) {
 
   doc.end();
 }
-
 
 ================================================================================
 FILE: server/src/socket.js
@@ -548,7 +551,7 @@ export function attachSocket(httpServer, corsOrigin) {
       await pool.query(
         `INSERT INTO members (id, meeting_id, school_id, name, role, vote, locked, updated_at)
          VALUES ($1,$2,$3,$4,$5,NULL,false,$6)`,
-        [id, meetingId, u.schoolId, name, role || "一般議員", updatedAt]
+        [id, meetingId, u.schoolId, name, role || "Member", updatedAt]
       );
 
       await appendAudit({
@@ -562,7 +565,7 @@ export function attachSocket(httpServer, corsOrigin) {
         type: "member_upsert",
         member: {
           id, meeting_id: meetingId, school_id: u.schoolId,
-          name, role: role || "一般議員",
+          name, role: role || "Member",
           vote: null, locked: false, updated_at: updatedAt
         }
       });
@@ -672,7 +675,6 @@ export function attachSocket(httpServer, corsOrigin) {
   return io;
 }
 
-
 ================================================================================
 FILE: server/src/index.js
 ================================================================================
@@ -749,7 +751,6 @@ server.listen(process.env.PORT || 3000, () => {
   console.log(`Server on http://localhost:${process.env.PORT || 3000}`);
 });
 
-
 ================================================================================
 FILE: client-react/package.json
 ================================================================================
@@ -773,7 +774,6 @@ FILE: client-react/package.json
   }
 }
 
-
 ================================================================================
 FILE: client-react/Dockerfile
 ================================================================================
@@ -785,7 +785,6 @@ COPY . .
 EXPOSE 5173
 CMD ["npm", "run", "dev"]
 
-
 ================================================================================
 FILE: client-react/vite.config.js
 ================================================================================
@@ -793,12 +792,11 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 export default defineConfig({ plugins: [react()] });
 
-
 ================================================================================
 FILE: client-react/index.html
 ================================================================================
 <!DOCTYPE html>
-<html lang="zh-Hant">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -810,7 +808,6 @@ FILE: client-react/index.html
 </body>
 </html>
 
-
 ================================================================================
 FILE: client-react/src/main.jsx
 ================================================================================
@@ -818,7 +815,6 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App.jsx";
 ReactDOM.createRoot(document.getElementById("root")).render(<App />);
-
 
 ================================================================================
 FILE: client-react/src/api.js
@@ -849,7 +845,6 @@ export function exportCsvUrl(meetingId) { return `${API}/api/meetings/${meetingI
 export function exportPdfUrl(meetingId) { return `${API}/api/meetings/${meetingId}/export.pdf`; }
 export const API_BASE = API;
 
-
 ================================================================================
 FILE: client-react/src/App.jsx
 ================================================================================
@@ -857,7 +852,7 @@ import { useMemo, useRef, useState, useEffect } from "react";
 import { io } from "socket.io-client";
 import { API_BASE, login, createMeeting, exportCsvUrl, exportPdfUrl } from "./api.js";
 
-const voteLabel = (v) => (v === "Y" ? "同意" : v === "N" ? "反對" : v === "A" ? "棄權" : "未投票");
+const voteLabel = (v) => (v === "Y" ? "Agree" : v === "N" ? "Oppose" : v === "A" ? "Abstain" : "Not Voted");
 
 export default function App() {
   const [schoolId, setSchoolId] = useState("soochow");
@@ -888,12 +883,12 @@ export default function App() {
   };
 
   const doCreateMeeting = async () => {
-    const r = await createMeeting(token, title || "校務會議");
+    const r = await createMeeting(token, title || "General Meeting");
     setMeetingId(r.meetingId);
   };
 
   const join = () => {
-    if (!token || !meetingId) return alert("先登入並輸入 meetingId");
+    if (!token || !meetingId) return alert("Please login and enter a meetingId first");
 
     if (socketRef.current) socketRef.current.disconnect();
     const s = io(API_BASE, { auth: { token } });
@@ -938,16 +933,16 @@ export default function App() {
 
   const addMember = () => {
     if (!isHost) return;
-    if (!mName.trim()) return alert("請輸入姓名");
+    if (!mName.trim()) return alert("Please enter a name");
     socketRef.current?.emit("add_member", {
-      meetingId, name: mName.trim(), role: mRole.trim() || "一般議員"
+      meetingId, name: mName.trim(), role: mRole.trim() || "Member"
     });
     setMName(""); setMRole("");
   };
 
   const openMotion = () => {
     if (!isHost) return;
-    if (!motionTitle.trim()) return alert("請輸入表決題目");
+    if (!motionTitle.trim()) return alert("Please enter a motion title");
     socketRef.current?.emit("open_motion", {
       meetingId, title: motionTitle.trim(), description: motionDesc.trim()
     });
@@ -955,7 +950,7 @@ export default function App() {
   };
 
   const vote = (memberId, choice) => {
-    if (!currentMotionId) return alert("請先建立/選擇表決題目");
+    if (!currentMotionId) return alert("Please create or select a motion first");
     socketRef.current?.emit("submit_vote", {
       meetingId, motionId: currentMotionId, memberId, choice
     });
@@ -972,7 +967,7 @@ export default function App() {
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
         <div style={{ border: "1px solid #eee", padding: 12, borderRadius: 12 }}>
-          <h3>1) 登入 (JWT)</h3>
+          <h3>1) Login (JWT)</h3>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <input value={schoolId} onChange={e => setSchoolId(e.target.value)} placeholder="schoolId" />
             <input value={userId} onChange={e => setUserId(e.target.value)} placeholder="userId" />
@@ -986,14 +981,14 @@ export default function App() {
             <button onClick={doLogin}>Login</button>
           </div>
           <div style={{ marginTop: 8, fontSize: 12, color: "#666" }}>
-            token: {token ? "已取得" : "—"}
+            token: {token ? "Acquired" : "—"}
           </div>
         </div>
 
         <div style={{ border: "1px solid #eee", padding: 12, borderRadius: 12 }}>
-          <h3>2) 建立/加入會議</h3>
+          <h3>2) Create / Join Meeting</h3>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <input value={title} onChange={e => setTitle(e.target.value)} placeholder="會議名稱" />
+            <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Meeting title" />
             <button onClick={doCreateMeeting} disabled={!token || !isHost}>Create meeting</button>
             <input value={meetingId} onChange={e => setMeetingId(e.target.value)} placeholder="meetingId" />
             <button onClick={join} disabled={!token || !meetingId}>Join</button>
@@ -1013,19 +1008,19 @@ export default function App() {
       {isHost && (
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
           <div style={{ border: "1px solid #eee", padding: 12, borderRadius: 12 }}>
-            <h3>主持人：新增議員</h3>
+            <h3>Host: Add Member</h3>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <input value={mName} onChange={e => setMName(e.target.value)} placeholder="姓名" />
-              <input value={mRole} onChange={e => setMRole(e.target.value)} placeholder="職稱" />
-              <button onClick={addMember}>新增</button>
+              <input value={mName} onChange={e => setMName(e.target.value)} placeholder="Name" />
+              <input value={mRole} onChange={e => setMRole(e.target.value)} placeholder="Title" />
+              <button onClick={addMember}>Add</button>
             </div>
           </div>
 
           <div style={{ border: "1px solid #eee", padding: 12, borderRadius: 12 }}>
-            <h3>主持人：建立表決題目</h3>
+            <h3>Host: Create Motion</h3>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <input value={motionTitle} onChange={e => setMotionTitle(e.target.value)} placeholder="題目" />
-              <input value={motionDesc} onChange={e => setMotionDesc(e.target.value)} placeholder="說明（可空）" />
+              <input value={motionTitle} onChange={e => setMotionTitle(e.target.value)} placeholder="Motion title" />
+              <input value={motionDesc} onChange={e => setMotionDesc(e.target.value)} placeholder="Description (optional)" />
               <button onClick={openMotion}>Open motion</button>
             </div>
           </div>
@@ -1033,20 +1028,20 @@ export default function App() {
       )}
 
       <div style={{ marginTop: 16, border: "1px solid #eee", padding: 12, borderRadius: 12 }}>
-        <h3>目前表決題目</h3>
+        <h3>Current Motion</h3>
         <select value={currentMotionId} onChange={e => setCurrentMotionId(e.target.value)}>
-          <option value="">（尚無）</option>
+          <option value="">(None)</option>
           {motions.map(m => (
             <option key={m.id} value={m.id}>{m.title} | {m.status}</option>
           ))}
         </select>
       </div>
 
-      <h3 style={{ marginTop: 16 }}>記名投票名單（投票鎖定，主持人可撤銷）</h3>
+      <h3 style={{ marginTop: 16 }}>Roll Call Vote (locked after voting, host can revoke)</h3>
       <table style={{ borderCollapse: "collapse", width: "100%" }}>
         <thead>
           <tr>
-            {["姓名", "職稱", "投票狀態", "操作"].map(h => (
+            {["Name", "Title", "Vote Status", "Actions"].map(h => (
               <th key={h} style={{ border: "1px solid #ddd", padding: 8, textAlign: "left" }}>{h}</th>
             ))}
           </tr>
@@ -1058,10 +1053,10 @@ export default function App() {
               <td style={{ border: "1px solid #ddd", padding: 8 }}>{m.role}</td>
               <td style={{ border: "1px solid #ddd", padding: 8 }}>{voteLabel(m.vote)}</td>
               <td style={{ border: "1px solid #ddd", padding: 8 }}>
-                <button disabled={!!m.locked} onClick={() => vote(m.id, "Y")}>同意</button>{" "}
-                <button disabled={!!m.locked} onClick={() => vote(m.id, "N")}>反對</button>{" "}
-                <button disabled={!!m.locked} onClick={() => vote(m.id, "A")}>棄權</button>{" "}
-                <button disabled={!isHost} onClick={() => revoke(m.id)}>撤銷</button>
+                <button disabled={!!m.locked} onClick={() => vote(m.id, "Y")}>Agree</button>{" "}
+                <button disabled={!!m.locked} onClick={() => vote(m.id, "N")}>Oppose</button>{" "}
+                <button disabled={!!m.locked} onClick={() => vote(m.id, "A")}>Abstain</button>{" "}
+                <button disabled={!isHost} onClick={() => revoke(m.id)}>Revoke</button>
               </td>
             </tr>
           ))}
@@ -1069,18 +1064,17 @@ export default function App() {
       </table>
 
       <div style={{ marginTop: 10, fontSize: 12, color: "#666" }}>
-        * 匯出 PDF/CSV 會從 Postgres 取資料；Audit Log 以 Hash Chain 寫入 audit_log（不可抵賴）。
+        * PDF/CSV exports pull data from Postgres; Audit Log is written to audit_log with Hash Chain (non-repudiation).
       </div>
     </div>
   );
 }
 
-
 ================================================================================
 FILE: client-vanilla/index.html
 ================================================================================
 <!doctype html>
-<html lang="zh-Hant">
+<html lang="en">
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
@@ -1104,7 +1098,7 @@ FILE: client-vanilla/index.html
     </div>
     <div>
       <div class="muted">meetingId</div>
-      <input id="meetingId" placeholder="例如: AbCd1234" style="width:160px;">
+      <input id="meetingId" placeholder="e.g. AbCd1234" style="width:160px;">
     </div>
     <div>
       <div class="muted">role token</div>
@@ -1120,23 +1114,23 @@ FILE: client-vanilla/index.html
   <hr/>
 
   <div id="hostPanel" style="display:none;">
-    <h3>主持人：新增議員</h3>
-    <input id="mName" placeholder="姓名">
-    <input id="mRole" placeholder="職稱">
-    <button id="btnAdd">新增</button>
+    <h3>Host: Add Member</h3>
+    <input id="mName" placeholder="Name">
+    <input id="mRole" placeholder="Title">
+    <button id="btnAdd">Add</button>
   </div>
 
-  <h3>記名投票名單</h3>
+  <h3>Roll Call Vote</h3>
   <table>
     <thead>
       <tr>
-        <th>姓名</th><th>職稱</th><th>投票狀態</th><th>操作</th><th>最後更新</th>
+        <th>Name</th><th>Title</th><th>Vote Status</th><th>Actions</th><th>Last Updated</th>
       </tr>
     </thead>
     <tbody id="tbody"></tbody>
   </table>
 
-  <h3>Audit（最近 50 筆）</h3>
+  <h3>Audit (last 50 entries)</h3>
   <pre id="audit" style="background:#f7f7f7; padding:8px; border:1px solid #eee; overflow:auto;"></pre>
 
   <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
@@ -1146,7 +1140,7 @@ FILE: client-vanilla/index.html
 
     const el = (id) => document.getElementById(id);
     const fmtTime = (ms) => ms ? new Date(Number(ms)).toLocaleString() : "—";
-    const voteLabel = (v) => v==="Y"?"同意":v==="N"?"反對":v==="A"?"棄權":"未投票";
+    const voteLabel = (v) => v==="Y"?"Agree":v==="N"?"Oppose":v==="A"?"Abstain":"Not Voted";
 
     function renderTable() {
       const tbody = el("tbody");
@@ -1156,14 +1150,14 @@ FILE: client-vanilla/index.html
         tr.dataset.memberId = m.id;
         tr.innerHTML = `
           <td>${escapeHtml(m.name)}</td>
-          <td>${escapeHtml(m.role || "一般議員")}</td>
+          <td>${escapeHtml(m.role || "Member")}</td>
           <td><span class="badge">${voteLabel(m.vote)}</span></td>
           <td>
             <div class="actions">
-              <button class="btnVote" data-v="Y" ${m.locked ? "disabled":""}>同意</button>
-              <button class="btnVote" data-v="N" ${m.locked ? "disabled":""}>反對</button>
-              <button class="btnVote" data-v="A" ${m.locked ? "disabled":""}>棄權</button>
-              <button class="btnRevoke" ${m.vote ? "":"disabled"}>撤銷</button>
+              <button class="btnVote" data-v="Y" ${m.locked ? "disabled":""}>Agree</button>
+              <button class="btnVote" data-v="N" ${m.locked ? "disabled":""}>Oppose</button>
+              <button class="btnVote" data-v="A" ${m.locked ? "disabled":""}>Abstain</button>
+              <button class="btnRevoke" ${m.vote ? "":"disabled"}>Revoke</button>
             </div>
           </td>
           <td class="muted">${fmtTime(m.updated_at)}</td>
@@ -1193,7 +1187,7 @@ FILE: client-vanilla/index.html
       const token = el("token").value.trim();
       const userName = el("userName").value.trim() || "Anonymous";
 
-      if (!serverUrl || !meetingId) return alert("請填 serverUrl 與 meetingId");
+      if (!serverUrl || !meetingId) return alert("Please fill in serverUrl and meetingId");
 
       socket = io(serverUrl, { auth: { token } });
 
@@ -1229,7 +1223,7 @@ FILE: client-vanilla/index.html
     el("btnAdd").onclick = () => {
       const name = el("mName").value.trim();
       const role = el("mRole").value.trim();
-      if (!name) return alert("請輸入姓名");
+      if (!name) return alert("Please enter a name");
       const meetingId = el("meetingId").value.trim();
       socket?.emit("add_member", { meetingId, name, role });
       el("mName").value = "";
@@ -1238,7 +1232,6 @@ FILE: client-vanilla/index.html
   </script>
 </body>
 </html>
-
 
 ================================================================================
 FILE: deploy/backup.sh
@@ -1253,7 +1246,6 @@ mkdir -p deploy/backups
 echo "[+] Backing up postgres to $OUT"
 docker compose exec -T postgres pg_dump -U meeting -d meeting | gzip > "$OUT"
 echo "[+] Done"
-
 
 ================================================================================
 FILE: deploy/restore.sh
@@ -1277,7 +1269,6 @@ echo "[+] Restoring from $FILE"
 
 gunzip -c "$FILE" | docker compose exec -T postgres psql -U meeting -d meeting
 echo "[+] Done"
-
 
 ================================================================================
 END OF ALL FILES

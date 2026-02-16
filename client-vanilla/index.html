@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-Hant">
+<html lang="en">
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
@@ -23,7 +23,7 @@
     </div>
     <div>
       <div class="muted">meetingId</div>
-      <input id="meetingId" placeholder="例如: AbCd1234" style="width:160px;">
+      <input id="meetingId" placeholder="e.g. AbCd1234" style="width:160px;">
     </div>
     <div>
       <div class="muted">role token</div>
@@ -39,23 +39,23 @@
   <hr/>
 
   <div id="hostPanel" style="display:none;">
-    <h3>主持人：新增議員</h3>
-    <input id="mName" placeholder="姓名">
-    <input id="mRole" placeholder="職稱">
-    <button id="btnAdd">新增</button>
+    <h3>Host: Add Member</h3>
+    <input id="mName" placeholder="Name">
+    <input id="mRole" placeholder="Title">
+    <button id="btnAdd">Add</button>
   </div>
 
-  <h3>記名投票名單</h3>
+  <h3>Roll Call Vote</h3>
   <table>
     <thead>
       <tr>
-        <th>姓名</th><th>職稱</th><th>投票狀態</th><th>操作</th><th>最後更新</th>
+        <th>Name</th><th>Title</th><th>Vote Status</th><th>Actions</th><th>Last Updated</th>
       </tr>
     </thead>
     <tbody id="tbody"></tbody>
   </table>
 
-  <h3>Audit（最近 50 筆）</h3>
+  <h3>Audit (last 50 entries)</h3>
   <pre id="audit" style="background:#f7f7f7; padding:8px; border:1px solid #eee; overflow:auto;"></pre>
 
   <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
@@ -65,7 +65,7 @@
 
     const el = (id) => document.getElementById(id);
     const fmtTime = (ms) => ms ? new Date(Number(ms)).toLocaleString() : "—";
-    const voteLabel = (v) => v==="Y"?"同意":v==="N"?"反對":v==="A"?"棄權":"未投票";
+    const voteLabel = (v) => v==="Y"?"Agree":v==="N"?"Oppose":v==="A"?"Abstain":"Not Voted";
 
     function renderTable() {
       const tbody = el("tbody");
@@ -75,14 +75,14 @@
         tr.dataset.memberId = m.id;
         tr.innerHTML = `
           <td>${escapeHtml(m.name)}</td>
-          <td>${escapeHtml(m.role || "一般議員")}</td>
+          <td>${escapeHtml(m.role || "Member")}</td>
           <td><span class="badge">${voteLabel(m.vote)}</span></td>
           <td>
             <div class="actions">
-              <button class="btnVote" data-v="Y" ${m.locked ? "disabled":""}>同意</button>
-              <button class="btnVote" data-v="N" ${m.locked ? "disabled":""}>反對</button>
-              <button class="btnVote" data-v="A" ${m.locked ? "disabled":""}>棄權</button>
-              <button class="btnRevoke" ${m.vote ? "":"disabled"}>撤銷</button>
+              <button class="btnVote" data-v="Y" ${m.locked ? "disabled":""}>Agree</button>
+              <button class="btnVote" data-v="N" ${m.locked ? "disabled":""}>Oppose</button>
+              <button class="btnVote" data-v="A" ${m.locked ? "disabled":""}>Abstain</button>
+              <button class="btnRevoke" ${m.vote ? "":"disabled"}>Revoke</button>
             </div>
           </td>
           <td class="muted">${fmtTime(m.updated_at)}</td>
@@ -112,7 +112,7 @@
       const token = el("token").value.trim();
       const userName = el("userName").value.trim() || "Anonymous";
 
-      if (!serverUrl || !meetingId) return alert("請填 serverUrl 與 meetingId");
+      if (!serverUrl || !meetingId) return alert("Please fill in serverUrl and meetingId");
 
       socket = io(serverUrl, { auth: { token } });
 
@@ -148,7 +148,7 @@
     el("btnAdd").onclick = () => {
       const name = el("mName").value.trim();
       const role = el("mRole").value.trim();
-      if (!name) return alert("請輸入姓名");
+      if (!name) return alert("Please enter a name");
       const meetingId = el("meetingId").value.trim();
       socket?.emit("add_member", { meetingId, name, role });
       el("mName").value = "";

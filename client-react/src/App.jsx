@@ -2,7 +2,7 @@ import { useMemo, useRef, useState, useEffect } from "react";
 import { io } from "socket.io-client";
 import { API_BASE, login, createMeeting, exportCsvUrl, exportPdfUrl } from "./api.js";
 
-const voteLabel = (v) => (v === "Y" ? "同意" : v === "N" ? "反對" : v === "A" ? "棄權" : "未投票");
+const voteLabel = (v) => (v === "Y" ? "Agree" : v === "N" ? "Oppose" : v === "A" ? "Abstain" : "Not Voted");
 
 export default function App() {
   const [schoolId, setSchoolId] = useState("soochow");
@@ -33,12 +33,12 @@ export default function App() {
   };
 
   const doCreateMeeting = async () => {
-    const r = await createMeeting(token, title || "校務會議");
+    const r = await createMeeting(token, title || "General Meeting");
     setMeetingId(r.meetingId);
   };
 
   const join = () => {
-    if (!token || !meetingId) return alert("先登入並輸入 meetingId");
+    if (!token || !meetingId) return alert("Please login and enter a meetingId first");
 
     if (socketRef.current) socketRef.current.disconnect();
     const s = io(API_BASE, { auth: { token } });
@@ -83,16 +83,16 @@ export default function App() {
 
   const addMember = () => {
     if (!isHost) return;
-    if (!mName.trim()) return alert("請輸入姓名");
+    if (!mName.trim()) return alert("Please enter a name");
     socketRef.current?.emit("add_member", {
-      meetingId, name: mName.trim(), role: mRole.trim() || "一般議員"
+      meetingId, name: mName.trim(), role: mRole.trim() || "Member"
     });
     setMName(""); setMRole("");
   };
 
   const openMotion = () => {
     if (!isHost) return;
-    if (!motionTitle.trim()) return alert("請輸入表決題目");
+    if (!motionTitle.trim()) return alert("Please enter a motion title");
     socketRef.current?.emit("open_motion", {
       meetingId, title: motionTitle.trim(), description: motionDesc.trim()
     });
@@ -100,7 +100,7 @@ export default function App() {
   };
 
   const vote = (memberId, choice) => {
-    if (!currentMotionId) return alert("請先建立/選擇表決題目");
+    if (!currentMotionId) return alert("Please create or select a motion first");
     socketRef.current?.emit("submit_vote", {
       meetingId, motionId: currentMotionId, memberId, choice
     });
@@ -117,7 +117,7 @@ export default function App() {
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
         <div style={{ border: "1px solid #eee", padding: 12, borderRadius: 12 }}>
-          <h3>1) 登入 (JWT)</h3>
+          <h3>1) Login (JWT)</h3>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <input value={schoolId} onChange={e => setSchoolId(e.target.value)} placeholder="schoolId" />
             <input value={userId} onChange={e => setUserId(e.target.value)} placeholder="userId" />
@@ -131,14 +131,14 @@ export default function App() {
             <button onClick={doLogin}>Login</button>
           </div>
           <div style={{ marginTop: 8, fontSize: 12, color: "#666" }}>
-            token: {token ? "已取得" : "—"}
+            token: {token ? "Acquired" : "—"}
           </div>
         </div>
 
         <div style={{ border: "1px solid #eee", padding: 12, borderRadius: 12 }}>
-          <h3>2) 建立/加入會議</h3>
+          <h3>2) Create / Join Meeting</h3>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <input value={title} onChange={e => setTitle(e.target.value)} placeholder="會議名稱" />
+            <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Meeting title" />
             <button onClick={doCreateMeeting} disabled={!token || !isHost}>Create meeting</button>
             <input value={meetingId} onChange={e => setMeetingId(e.target.value)} placeholder="meetingId" />
             <button onClick={join} disabled={!token || !meetingId}>Join</button>
@@ -158,19 +158,19 @@ export default function App() {
       {isHost && (
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
           <div style={{ border: "1px solid #eee", padding: 12, borderRadius: 12 }}>
-            <h3>主持人：新增議員</h3>
+            <h3>Host: Add Member</h3>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <input value={mName} onChange={e => setMName(e.target.value)} placeholder="姓名" />
-              <input value={mRole} onChange={e => setMRole(e.target.value)} placeholder="職稱" />
-              <button onClick={addMember}>新增</button>
+              <input value={mName} onChange={e => setMName(e.target.value)} placeholder="Name" />
+              <input value={mRole} onChange={e => setMRole(e.target.value)} placeholder="Title" />
+              <button onClick={addMember}>Add</button>
             </div>
           </div>
 
           <div style={{ border: "1px solid #eee", padding: 12, borderRadius: 12 }}>
-            <h3>主持人：建立表決題目</h3>
+            <h3>Host: Create Motion</h3>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <input value={motionTitle} onChange={e => setMotionTitle(e.target.value)} placeholder="題目" />
-              <input value={motionDesc} onChange={e => setMotionDesc(e.target.value)} placeholder="說明（可空）" />
+              <input value={motionTitle} onChange={e => setMotionTitle(e.target.value)} placeholder="Motion title" />
+              <input value={motionDesc} onChange={e => setMotionDesc(e.target.value)} placeholder="Description (optional)" />
               <button onClick={openMotion}>Open motion</button>
             </div>
           </div>
@@ -178,20 +178,20 @@ export default function App() {
       )}
 
       <div style={{ marginTop: 16, border: "1px solid #eee", padding: 12, borderRadius: 12 }}>
-        <h3>目前表決題目</h3>
+        <h3>Current Motion</h3>
         <select value={currentMotionId} onChange={e => setCurrentMotionId(e.target.value)}>
-          <option value="">（尚無）</option>
+          <option value="">(None)</option>
           {motions.map(m => (
             <option key={m.id} value={m.id}>{m.title} | {m.status}</option>
           ))}
         </select>
       </div>
 
-      <h3 style={{ marginTop: 16 }}>記名投票名單（投票鎖定，主持人可撤銷）</h3>
+      <h3 style={{ marginTop: 16 }}>Roll Call Vote (locked after voting, host can revoke)</h3>
       <table style={{ borderCollapse: "collapse", width: "100%" }}>
         <thead>
           <tr>
-            {["姓名", "職稱", "投票狀態", "操作"].map(h => (
+            {["Name", "Title", "Vote Status", "Actions"].map(h => (
               <th key={h} style={{ border: "1px solid #ddd", padding: 8, textAlign: "left" }}>{h}</th>
             ))}
           </tr>
@@ -203,10 +203,10 @@ export default function App() {
               <td style={{ border: "1px solid #ddd", padding: 8 }}>{m.role}</td>
               <td style={{ border: "1px solid #ddd", padding: 8 }}>{voteLabel(m.vote)}</td>
               <td style={{ border: "1px solid #ddd", padding: 8 }}>
-                <button disabled={!!m.locked} onClick={() => vote(m.id, "Y")}>同意</button>{" "}
-                <button disabled={!!m.locked} onClick={() => vote(m.id, "N")}>反對</button>{" "}
-                <button disabled={!!m.locked} onClick={() => vote(m.id, "A")}>棄權</button>{" "}
-                <button disabled={!isHost} onClick={() => revoke(m.id)}>撤銷</button>
+                <button disabled={!!m.locked} onClick={() => vote(m.id, "Y")}>Agree</button>{" "}
+                <button disabled={!!m.locked} onClick={() => vote(m.id, "N")}>Oppose</button>{" "}
+                <button disabled={!!m.locked} onClick={() => vote(m.id, "A")}>Abstain</button>{" "}
+                <button disabled={!isHost} onClick={() => revoke(m.id)}>Revoke</button>
               </td>
             </tr>
           ))}
@@ -214,7 +214,7 @@ export default function App() {
       </table>
 
       <div style={{ marginTop: 10, fontSize: 12, color: "#666" }}>
-        * 匯出 PDF/CSV 會從 Postgres 取資料；Audit Log 以 Hash Chain 寫入 audit_log（不可抵賴）。
+        * PDF/CSV exports pull data from Postgres; Audit Log is written to audit_log with Hash Chain (non-repudiation).
       </div>
     </div>
   );

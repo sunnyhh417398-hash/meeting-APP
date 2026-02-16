@@ -61,7 +61,7 @@ export function attachSocket(httpServer, corsOrigin) {
       await pool.query(
         `INSERT INTO members (id, meeting_id, school_id, name, role, vote, locked, updated_at)
          VALUES ($1,$2,$3,$4,$5,NULL,false,$6)`,
-        [id, meetingId, u.schoolId, name, role || "一般議員", updatedAt]
+        [id, meetingId, u.schoolId, name, role || "Member", updatedAt]
       );
 
       await appendAudit({
@@ -75,7 +75,7 @@ export function attachSocket(httpServer, corsOrigin) {
         type: "member_upsert",
         member: {
           id, meeting_id: meetingId, school_id: u.schoolId,
-          name, role: role || "一般議員",
+          name, role: role || "Member",
           vote: null, locked: false, updated_at: updatedAt
         }
       });

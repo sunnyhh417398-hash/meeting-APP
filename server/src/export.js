@@ -48,7 +48,7 @@ export async function exportPdf(res, meetingId, schoolId) {
   doc.moveDown(0.5);
   members.rows.forEach(m => {
     doc.fontSize(12).text(
-      `${m.role} | ${m.name} | ${m.vote ?? "未投票"} | ${m.updated_at ? new Date(Number(m.updated_at)).toLocaleString() : "-"}`
+      `${m.role} | ${m.name} | ${m.vote ?? "Not Voted"} | ${m.updated_at ? new Date(Number(m.updated_at)).toLocaleString() : "-"}`
     );
   });
 
