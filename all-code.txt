@@ -1,0 +1,1284 @@
+================================================================================
+Meeting SaaS - Complete Source Code
+================================================================================
+Repo Structure:
+  .gitignore
+  .env.example
+  docker-compose.yml
+  README.md
+  server/
+    Dockerfile
+    package.json
+    src/
+      index.js
+      auth.js
+      rbac.js
+      db.js
+      store.js
+      audit.js
+      export.js
+      agenda.js
+      socket.js
+  client-react/
+    Dockerfile
+    package.json
+    vite.config.js
+    index.html
+    src/
+      main.jsx
+      App.jsx
+      api.js
+  client-vanilla/
+    index.html
+  deploy/
+    backup.sh
+    restore.sh
+    backups/.gitkeep
+================================================================================
+
+
+================================================================================
+FILE: .gitignore
+================================================================================
+node_modules
+dist
+.env
+.DS_Store
+deploy/backups/*.sql.gz
+
+
+================================================================================
+FILE: .env.example
+================================================================================
+PORT=3000
+JWT_SECRET=change-me
+PG_URL=postgres://meeting:meeting@localhost:5432/meeting
+REDIS_URL=redis://localhost:6379
+CORS_ORIGIN=http://localhost:5173
+VITE_API_BASE=http://localhost:3000
+
+
+================================================================================
+FILE: docker-compose.yml
+================================================================================
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: meeting
+      POSTGRES_PASSWORD: meeting
+      POSTGRES_DB: meeting
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7
+
+  server:
+    build: ./server
+    environment:
+      PORT: 3000
+      JWT_SECRET: "${JWT_SECRET:-change-me}"
+      PG_URL: "postgres://meeting:meeting@postgres:5432/meeting"
+      REDIS_URL: "redis://redis:6379"
+      CORS_ORIGIN: "${CORS_ORIGIN:-http://localhost:5173}"
+    ports:
+      - "3000:3000"
+    depends_on:
+      - postgres
+      - redis
+
+  client-react:
+    build: ./client-react
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_API_BASE: "${VITE_API_BASE:-http://localhost:3000}"
+    depends_on:
+      - server
+
+volumes:
+  pgdata:
+
+
+================================================================================
+FILE: README.md
+================================================================================
+# Meeting SaaS (School-ready)
+
+A full-stack meeting management system with realtime voting, designed for schools to self-host.
+
+## Features
+- JWT auth (multi-tenant by schoolId)
+- Roles: viewer / member / host / admin
+- Socket.IO realtime sync
+- Redis snapshot cache
+- Postgres persistence
+- Non-repudiation audit log (hash chain)
+- Motions + Named voting + Host revoke
+- Export CSV / PDF
+- Meeting flow (agenda steps 1-9)
+- React frontend + Vanilla HTML frontend
+- Docker Compose one-command deploy
+- Speaking time tracker (standalone index.html)
+
+## Quick Start
+
+```bash
+cp .env.example .env
+# Edit .env — change JWT_SECRET at minimum
+docker compose up --build
+```
+
+- React client: http://localhost:5173
+- API / Socket: http://localhost:3000
+- Health check: http://localhost:3000/health
+
+## Login Demo
+
+Use the React UI login fields:
+- schoolId: soochow
+- userId: sunny
+- name: Sunny
+- role: host (or member / viewer)
+
+Then: Create meeting -> Join -> Add members -> Open motion -> Vote
+
+## Backup & Restore
+
+```bash
+# Backup
+bash deploy/backup.sh
+
+# Restore
+bash deploy/restore.sh deploy/backups/<file.sql.gz>
+```
+
+## Self-Hosted Deployment (for schools)
+
+### Requirements
+- Docker + Docker Compose (v2+)
+- 2 vCPU / 4GB RAM minimum
+- 20GB disk
+
+### Steps
+1. Clone this repo
+2. Copy .env.example to .env and set JWT_SECRET
+3. Run: docker compose up -d --build
+4. Access React UI at http://<server-ip>:5173
+
+### Update
+```bash
+git pull
+docker compose up -d --build
+```
+
+## Security Notes
+- Postgres and Redis are not exposed externally (internal Docker network only)
+- Audit log uses SHA-256 hash chain for non-repudiation
+- JWT tokens expire after 12 hours
+- Vote locking prevents ballot tampering (only host can revoke)
+
+
+================================================================================
+FILE: server/package.json
+================================================================================
+{
+  "name": "meeting-saas-server",
+  "type": "module",
+  "scripts": {
+    "dev": "node src/index.js",
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "ioredis": "^5.4.1",
+    "jsonwebtoken": "^9.0.2",
+    "nanoid": "^5.0.7",
+    "pdfkit": "^0.15.0",
+    "pg": "^8.12.0",
+    "socket.io": "^4.7.5"
+  }
+}
+
+
+================================================================================
+FILE: server/Dockerfile
+================================================================================
+FROM node:20-alpine
+WORKDIR /app
+COPY package.json package-lock.json* ./
+RUN npm i --omit=dev
+COPY src ./src
+EXPOSE 3000
+CMD ["node", "src/index.js"]
+
+
+================================================================================
+FILE: server/src/db.js
+================================================================================
+import pg from "pg";
+const { Pool } = pg;
+
+export const pool = new Pool({ connectionString: process.env.PG_URL });
+
+export async function initDb() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS meetings (
+      id TEXT PRIMARY KEY,
+      school_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'DRAFT',
+      created_at BIGINT NOT NULL,
+      updated_at BIGINT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS members (
+      id TEXT PRIMARY KEY,
+      meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
+      school_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      role TEXT NOT NULL,
+      vote TEXT,
+      locked BOOLEAN NOT NULL DEFAULT FALSE,
+      updated_at BIGINT
+    );
+
+    CREATE TABLE IF NOT EXISTS agenda_items (
+      id TEXT PRIMARY KEY,
+      meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
+      school_id TEXT NOT NULL,
+      seq INT NOT NULL,
+      title TEXT NOT NULL,
+      notes TEXT,
+      status TEXT NOT NULL DEFAULT 'PENDING'
+    );
+
+    CREATE TABLE IF NOT EXISTS motions (
+      id TEXT PRIMARY KEY,
+      meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
+      school_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      description TEXT,
+      status TEXT NOT NULL DEFAULT 'OPEN',
+      created_at BIGINT NOT NULL,
+      closed_at BIGINT
+    );
+
+    CREATE TABLE IF NOT EXISTS votes (
+      id TEXT PRIMARY KEY,
+      meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
+      school_id TEXT NOT NULL,
+      motion_id TEXT NOT NULL REFERENCES motions(id) ON DELETE CASCADE,
+      member_id TEXT NOT NULL REFERENCES members(id) ON DELETE CASCADE,
+      choice TEXT NOT NULL,
+      created_at BIGINT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS audit_log (
+      id TEXT PRIMARY KEY,
+      meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
+      school_id TEXT NOT NULL,
+      ts BIGINT NOT NULL,
+      actor_id TEXT NOT NULL,
+      actor_name TEXT NOT NULL,
+      action TEXT NOT NULL,
+      entity_type TEXT NOT NULL,
+      entity_id TEXT NOT NULL,
+      payload JSONB NOT NULL,
+      prev_hash TEXT,
+      hash TEXT NOT NULL
+    );
+  `);
+}
+
+
+================================================================================
+FILE: server/src/auth.js
+================================================================================
+import jwt from "jsonwebtoken";
+
+const JWT_SECRET = process.env.JWT_SECRET || "dev-secret";
+
+export function signToken({ schoolId, userId, name, role }) {
+  return jwt.sign({ schoolId, userId, name, role }, JWT_SECRET, { expiresIn: "12h" });
+}
+
+export function verifyToken(token) {
+  return jwt.verify(token, JWT_SECRET);
+}
+
+// Express middleware
+export function requireAuth(req, res, next) {
+  const h = req.headers.authorization || "";
+  const token = h.startsWith("Bearer ") ? h.slice(7) : "";
+  if (!token) return res.status(401).json({ error: "Missing token" });
+
+  try {
+    req.user = verifyToken(token);
+    next();
+  } catch {
+    return res.status(401).json({ error: "Invalid token" });
+  }
+}
+
+
+================================================================================
+FILE: server/src/rbac.js
+================================================================================
+export const ROLES = ["viewer", "member", "host", "admin"];
+
+export function can(userRole, needRole) {
+  const order = { viewer: 0, member: 1, host: 2, admin: 3 };
+  return (order[userRole] ?? 0) >= (order[needRole] ?? 0);
+}
+
+export function requireRole(needRole) {
+  return (req, res, next) => {
+    if (!can(req.user?.role, needRole)) return res.status(403).json({ error: "Forbidden" });
+    next();
+  };
+}
+
+
+================================================================================
+FILE: server/src/audit.js
+================================================================================
+import crypto from "crypto";
+import { nanoid } from "nanoid";
+import { pool } from "./db.js";
+
+function sha256(s) {
+  return crypto.createHash("sha256").update(s).digest("hex");
+}
+
+export async function appendAudit({
+  meetingId, schoolId, ts, actorId, actorName,
+  action, entityType, entityId, payload
+}) {
+  // Get previous hash (same meeting) for hash chain
+  const prev = await pool.query(
+    `SELECT hash FROM audit_log WHERE meeting_id=$1 AND school_id=$2 ORDER BY ts DESC LIMIT 1`,
+    [meetingId, schoolId]
+  );
+  const prevHash = prev.rows[0]?.hash || null;
+
+  const body = JSON.stringify({ meetingId, schoolId, ts, actorId, actorName, action, entityType, entityId, payload, prevHash });
+  const hash = sha256(body);
+
+  const id = nanoid(12);
+  await pool.query(
+    `INSERT INTO audit_log (id, meeting_id, school_id, ts, actor_id, actor_name, action, entity_type, entity_id, payload, prev_hash, hash)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+    [id, meetingId, schoolId, ts, actorId, actorName, action, entityType, entityId, payload, prevHash, hash]
+  );
+
+  return { id, prevHash, hash };
+}
+
+
+================================================================================
+FILE: server/src/store.js
+================================================================================
+import Redis from "ioredis";
+const redis = new Redis(process.env.REDIS_URL);
+
+const key = (schoolId, meetingId) => `meeting:${schoolId}:${meetingId}`;
+
+export async function getSnapshot(schoolId, meetingId) {
+  const raw = await redis.get(key(schoolId, meetingId));
+  return raw ? JSON.parse(raw) : null;
+}
+
+export async function setSnapshot(schoolId, meetingId, snap) {
+  await redis.set(key(schoolId, meetingId), JSON.stringify(snap), "EX", 60 * 60 * 6);
+}
+
+
+================================================================================
+FILE: server/src/agenda.js
+================================================================================
+export const MEETING_FLOW = [
+  "一、開會宣告",
+  "二、議程確立",
+  "三、議事錄確立",
+  "四、主席報告",
+  "五、委員會報告",
+  "六、提案討論",
+  "七、臨時動議",
+  "八、聲明及補述",
+  "九、散會宣告"
+];
+
+
+================================================================================
+FILE: server/src/export.js
+================================================================================
+import PDFDocument from "pdfkit";
+import { pool } from "./db.js";
+
+export async function exportCsv(meetingId, schoolId) {
+  const members = await pool.query(
+    `SELECT name, role, vote, locked, updated_at FROM members WHERE meeting_id=$1 AND school_id=$2 ORDER BY name`,
+    [meetingId, schoolId]
+  );
+
+  const header = ["name", "role", "vote", "locked", "updated_at"];
+  const rows = members.rows.map(r => header.map(k => (r[k] ?? "")));
+
+  const csv = [
+    header.join(","),
+    ...rows.map(r => r.map(v => `"${String(v).replaceAll('"', '""')}"`).join(","))
+  ].join("\n");
+  return csv;
+}
+
+export async function exportPdf(res, meetingId, schoolId) {
+  const meeting = await pool.query(
+    `SELECT * FROM meetings WHERE id=$1 AND school_id=$2`,
+    [meetingId, schoolId]
+  );
+  const members = await pool.query(
+    `SELECT name, role, vote, updated_at FROM members WHERE meeting_id=$1 AND school_id=$2 ORDER BY role, name`,
+    [meetingId, schoolId]
+  );
+  const motions = await pool.query(
+    `SELECT id, title, status, created_at, closed_at FROM motions WHERE meeting_id=$1 AND school_id=$2 ORDER BY created_at`,
+    [meetingId, schoolId]
+  );
+
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `attachment; filename="meeting_${meetingId}.pdf"`);
+
+  const doc = new PDFDocument({ margin: 40 });
+  doc.pipe(res);
+
+  doc.fontSize(18).text("Meeting Report", { underline: true });
+  doc.moveDown(0.5);
+  doc.fontSize(12).text(`Meeting ID: ${meetingId}`);
+  doc.text(`School ID: ${schoolId}`);
+  doc.text(`Title: ${meeting.rows[0]?.title || "-"}`);
+  doc.moveDown();
+
+  doc.fontSize(14).text("Members");
+  doc.moveDown(0.5);
+  members.rows.forEach(m => {
+    doc.fontSize(12).text(
+      `${m.role} | ${m.name} | ${m.vote ?? "未投票"} | ${m.updated_at ? new Date(Number(m.updated_at)).toLocaleString() : "-"}`
+    );
+  });
+
+  doc.moveDown();
+  doc.fontSize(14).text("Motions");
+  doc.moveDown(0.5);
+  motions.rows.forEach(x => {
+    doc.fontSize(12).text(
+      `${x.title} | ${x.status} | ${new Date(Number(x.created_at)).toLocaleString()}`
+    );
+  });
+
+  doc.end();
+}
+
+
+================================================================================
+FILE: server/src/socket.js
+================================================================================
+import { Server } from "socket.io";
+import { verifyToken } from "./auth.js";
+import { can } from "./rbac.js";
+import { nanoid } from "nanoid";
+import { pool } from "./db.js";
+import { appendAudit } from "./audit.js";
+import { getSnapshot, setSnapshot } from "./store.js";
+
+export function attachSocket(httpServer, corsOrigin) {
+  const io = new Server(httpServer, { cors: { origin: corsOrigin || "*" } });
+
+  io.use((socket, next) => {
+    const token = socket.handshake.auth?.token || "";
+    try {
+      socket.data.user = verifyToken(token);
+      next();
+    } catch {
+      next(new Error("UNAUTHORIZED"));
+    }
+  });
+
+  io.on("connection", (socket) => {
+    socket.on("join_meeting", async ({ meetingId }) => {
+      const u = socket.data.user;
+      socket.data.meetingId = meetingId;
+      socket.join(`${u.schoolId}:${meetingId}`);
+
+      // snapshot: try Redis first, fallback to DB
+      let snap = await getSnapshot(u.schoolId, meetingId);
+      if (!snap) {
+        const meeting = await pool.query(
+          `SELECT * FROM meetings WHERE id=$1 AND school_id=$2`,
+          [meetingId, u.schoolId]
+        );
+        const members = await pool.query(
+          `SELECT * FROM members WHERE meeting_id=$1 AND school_id=$2`,
+          [meetingId, u.schoolId]
+        );
+        const motions = await pool.query(
+          `SELECT * FROM motions WHERE meeting_id=$1 AND school_id=$2`,
+          [meetingId, u.schoolId]
+        );
+        snap = {
+          meeting: meeting.rows[0] || null,
+          members: members.rows,
+          motions: motions.rows
+        };
+        await setSnapshot(u.schoolId, meetingId, snap);
+      }
+
+      socket.emit("meeting_snapshot", snap);
+    });
+
+    socket.on("add_member", async ({ meetingId, name, role }) => {
+      const u = socket.data.user;
+      if (!can(u.role, "host")) return;
+
+      const id = nanoid(8);
+      const updatedAt = Date.now();
+
+      await pool.query(
+        `INSERT INTO members (id, meeting_id, school_id, name, role, vote, locked, updated_at)
+         VALUES ($1,$2,$3,$4,$5,NULL,false,$6)`,
+        [id, meetingId, u.schoolId, name, role || "一般議員", updatedAt]
+      );
+
+      await appendAudit({
+        meetingId, schoolId: u.schoolId, ts: updatedAt,
+        actorId: u.userId, actorName: u.name,
+        action: "ADD_MEMBER", entityType: "member", entityId: id,
+        payload: { name, role }
+      });
+
+      io.to(`${u.schoolId}:${meetingId}`).emit("state_patch", {
+        type: "member_upsert",
+        member: {
+          id, meeting_id: meetingId, school_id: u.schoolId,
+          name, role: role || "一般議員",
+          vote: null, locked: false, updated_at: updatedAt
+        }
+      });
+    });
+
+    socket.on("open_motion", async ({ meetingId, title, description }) => {
+      const u = socket.data.user;
+      if (!can(u.role, "host")) return;
+
+      const id = nanoid(8);
+      const ts = Date.now();
+      await pool.query(
+        `INSERT INTO motions (id, meeting_id, school_id, title, description, status, created_at)
+         VALUES ($1,$2,$3,$4,$5,'OPEN',$6)`,
+        [id, meetingId, u.schoolId, title, description || "", ts]
+      );
+
+      await appendAudit({
+        meetingId, schoolId: u.schoolId, ts,
+        actorId: u.userId, actorName: u.name,
+        action: "OPEN_MOTION", entityType: "motion", entityId: id,
+        payload: { title, description }
+      });
+
+      io.to(`${u.schoolId}:${meetingId}`).emit("state_patch", {
+        type: "motion_upsert",
+        motion: {
+          id, meeting_id: meetingId, school_id: u.schoolId,
+          title, description: description || "",
+          status: "OPEN", created_at: ts, closed_at: null
+        }
+      });
+    });
+
+    socket.on("submit_vote", async ({ meetingId, motionId, memberId, choice }) => {
+      const u = socket.data.user;
+      if (!can(u.role, "member")) return;
+      if (!["Y", "N", "A"].includes(choice)) return;
+
+      // Check if member is locked
+      const m = await pool.query(
+        `SELECT locked FROM members WHERE id=$1 AND meeting_id=$2 AND school_id=$3`,
+        [memberId, meetingId, u.schoolId]
+      );
+      if (!m.rowCount) return;
+      if (m.rows[0].locked) return;
+
+      const ts = Date.now();
+      const voteId = nanoid(10);
+
+      await pool.query("BEGIN");
+      try {
+        await pool.query(
+          `INSERT INTO votes (id, meeting_id, school_id, motion_id, member_id, choice, created_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+          [voteId, meetingId, u.schoolId, motionId, memberId, choice, ts]
+        );
+
+        await pool.query(
+          `UPDATE members SET vote=$1, locked=true, updated_at=$2 WHERE id=$3 AND meeting_id=$4 AND school_id=$5`,
+          [choice, ts, memberId, meetingId, u.schoolId]
+        );
+
+        await appendAudit({
+          meetingId, schoolId: u.schoolId, ts,
+          actorId: u.userId, actorName: u.name,
+          action: "VOTE", entityType: "vote", entityId: voteId,
+          payload: { motionId, memberId, choice }
+        });
+
+        await pool.query("COMMIT");
+      } catch (e) {
+        await pool.query("ROLLBACK");
+        return;
+      }
+
+      io.to(`${u.schoolId}:${meetingId}`).emit("state_patch", {
+        type: "member_vote",
+        memberId, vote: choice, locked: true, updatedAt: ts
+      });
+    });
+
+    socket.on("revoke_vote", async ({ meetingId, memberId }) => {
+      const u = socket.data.user;
+      if (!can(u.role, "host")) return;
+
+      const ts = Date.now();
+      await pool.query(
+        `UPDATE members SET vote=NULL, locked=false, updated_at=$1 WHERE id=$2 AND meeting_id=$3 AND school_id=$4`,
+        [ts, memberId, meetingId, u.schoolId]
+      );
+
+      await appendAudit({
+        meetingId, schoolId: u.schoolId, ts,
+        actorId: u.userId, actorName: u.name,
+        action: "REVOKE", entityType: "member", entityId: memberId,
+        payload: {}
+      });
+
+      io.to(`${u.schoolId}:${meetingId}`).emit("state_patch", {
+        type: "member_vote",
+        memberId, vote: null, locked: false, updatedAt: ts
+      });
+    });
+  });
+
+  return io;
+}
+
+
+================================================================================
+FILE: server/src/index.js
+================================================================================
+import express from "express";
+import http from "http";
+import cors from "cors";
+import { nanoid } from "nanoid";
+
+import { initDb, pool } from "./db.js";
+import { signToken, requireAuth } from "./auth.js";
+import { requireRole } from "./rbac.js";
+import { attachSocket } from "./socket.js";
+import { exportCsv, exportPdf } from "./export.js";
+import { MEETING_FLOW } from "./agenda.js";
+
+const app = express();
+app.use(cors({ origin: process.env.CORS_ORIGIN || "*" }));
+app.use(express.json());
+
+await initDb();
+
+app.get("/health", (_, res) => res.json({ ok: true }));
+
+// 1) Login (Demo) — replace with school SSO in production
+app.post("/api/auth/login", (req, res) => {
+  const { schoolId, userId, name, role } = req.body || {};
+  if (!schoolId || !userId || !name || !role)
+    return res.status(400).json({ error: "missing fields" });
+  const token = signToken({ schoolId, userId, name, role });
+  res.json({ token });
+});
+
+// 2) Create meeting
+app.post("/api/meetings", requireAuth, requireRole("host"), async (req, res) => {
+  const u = req.user;
+  const id = nanoid(8);
+  const ts = Date.now();
+  const title = req.body?.title || `Meeting ${id}`;
+
+  await pool.query(
+    `INSERT INTO meetings (id, school_id, title, status, created_at, updated_at)
+     VALUES ($1,$2,$3,'DRAFT',$4,$5)`,
+    [id, u.schoolId, title, ts, ts]
+  );
+  res.json({ meetingId: id, title });
+});
+
+// 3) Meeting flow (agenda steps 1-9)
+app.get("/api/meeting_flow", requireAuth, (req, res) => {
+  res.json({ flow: MEETING_FLOW });
+});
+
+// 4) Export CSV
+app.get("/api/meetings/:id/export.csv", requireAuth, async (req, res) => {
+  const u = req.user;
+  const meetingId = req.params.id;
+  const csv = await exportCsv(meetingId, u.schoolId);
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="meeting_${meetingId}.csv"`);
+  res.send(csv);
+});
+
+// 5) Export PDF
+app.get("/api/meetings/:id/export.pdf", requireAuth, async (req, res) => {
+  const u = req.user;
+  const meetingId = req.params.id;
+  await exportPdf(res, meetingId, u.schoolId);
+});
+
+const server = http.createServer(app);
+attachSocket(server, process.env.CORS_ORIGIN || "*");
+
+server.listen(process.env.PORT || 3000, () => {
+  console.log(`Server on http://localhost:${process.env.PORT || 3000}`);
+});
+
+
+================================================================================
+FILE: client-react/package.json
+================================================================================
+{
+  "name": "meeting-saas-client",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0 --port 5173",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "socket.io-client": "^4.7.5"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.1",
+    "vite": "^5.4.0"
+  }
+}
+
+
+================================================================================
+FILE: client-react/Dockerfile
+================================================================================
+FROM node:20-alpine
+WORKDIR /app
+COPY package.json package-lock.json* ./
+RUN npm i
+COPY . .
+EXPOSE 5173
+CMD ["npm", "run", "dev"]
+
+
+================================================================================
+FILE: client-react/vite.config.js
+================================================================================
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+export default defineConfig({ plugins: [react()] });
+
+
+================================================================================
+FILE: client-react/index.html
+================================================================================
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Meeting SaaS</title>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="module" src="/src/main.jsx"></script>
+</body>
+</html>
+
+
+================================================================================
+FILE: client-react/src/main.jsx
+================================================================================
+import React from "react";
+import ReactDOM from "react-dom/client";
+import App from "./App.jsx";
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+
+
+================================================================================
+FILE: client-react/src/api.js
+================================================================================
+const API = import.meta.env.VITE_API_BASE || "http://localhost:3000";
+
+export async function login({ schoolId, userId, name, role }) {
+  const r = await fetch(`${API}/api/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ schoolId, userId, name, role })
+  });
+  if (!r.ok) throw new Error("login failed");
+  return r.json();
+}
+
+export async function createMeeting(token, title) {
+  const r = await fetch(`${API}/api/meetings`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ title })
+  });
+  if (!r.ok) throw new Error("create meeting failed");
+  return r.json();
+}
+
+export function exportCsvUrl(meetingId) { return `${API}/api/meetings/${meetingId}/export.csv`; }
+export function exportPdfUrl(meetingId) { return `${API}/api/meetings/${meetingId}/export.pdf`; }
+export const API_BASE = API;
+
+
+================================================================================
+FILE: client-react/src/App.jsx
+================================================================================
+import { useMemo, useRef, useState, useEffect } from "react";
+import { io } from "socket.io-client";
+import { API_BASE, login, createMeeting, exportCsvUrl, exportPdfUrl } from "./api.js";
+
+const voteLabel = (v) => (v === "Y" ? "同意" : v === "N" ? "反對" : v === "A" ? "棄權" : "未投票");
+
+export default function App() {
+  const [schoolId, setSchoolId] = useState("soochow");
+  const [userId, setUserId] = useState("sunny");
+  const [name, setName] = useState("Sunny");
+  const [role, setRole] = useState("host");
+
+  const [token, setToken] = useState("");
+  const [meetingId, setMeetingId] = useState("");
+  const [title, setTitle] = useState("");
+
+  const [members, setMembers] = useState([]);
+  const [motions, setMotions] = useState([]);
+  const [currentMotionId, setCurrentMotionId] = useState("");
+
+  const [mName, setMName] = useState("");
+  const [mRole, setMRole] = useState("");
+
+  const [motionTitle, setMotionTitle] = useState("");
+  const [motionDesc, setMotionDesc] = useState("");
+
+  const socketRef = useRef(null);
+  const isHost = useMemo(() => role === "host" || role === "admin", [role]);
+
+  const doLogin = async () => {
+    const { token } = await login({ schoolId, userId, name, role });
+    setToken(token);
+  };
+
+  const doCreateMeeting = async () => {
+    const r = await createMeeting(token, title || "校務會議");
+    setMeetingId(r.meetingId);
+  };
+
+  const join = () => {
+    if (!token || !meetingId) return alert("先登入並輸入 meetingId");
+
+    if (socketRef.current) socketRef.current.disconnect();
+    const s = io(API_BASE, { auth: { token } });
+    socketRef.current = s;
+
+    s.on("connect", () => {
+      s.emit("join_meeting", { meetingId });
+    });
+
+    s.on("meeting_snapshot", (snap) => {
+      setMembers(snap.members || []);
+      setMotions(snap.motions || []);
+      setCurrentMotionId((snap.motions?.[0]?.id) || "");
+    });
+
+    s.on("state_patch", (patch) => {
+      if (patch.type === "member_upsert") {
+        setMembers(prev => {
+          const map = new Map(prev.map(x => [x.id, x]));
+          map.set(patch.member.id, patch.member);
+          return [...map.values()];
+        });
+      }
+      if (patch.type === "motion_upsert") {
+        setMotions(prev => {
+          const map = new Map(prev.map(x => [x.id, x]));
+          map.set(patch.motion.id, patch.motion);
+          const arr = [...map.values()].sort((a, b) => a.created_at - b.created_at);
+          if (!currentMotionId) setCurrentMotionId(patch.motion.id);
+          return arr;
+        });
+      }
+      if (patch.type === "member_vote") {
+        setMembers(prev => prev.map(m =>
+          m.id === patch.memberId
+            ? { ...m, vote: patch.vote, locked: patch.locked, updated_at: patch.updatedAt }
+            : m
+        ));
+      }
+    });
+  };
+
+  const addMember = () => {
+    if (!isHost) return;
+    if (!mName.trim()) return alert("請輸入姓名");
+    socketRef.current?.emit("add_member", {
+      meetingId, name: mName.trim(), role: mRole.trim() || "一般議員"
+    });
+    setMName(""); setMRole("");
+  };
+
+  const openMotion = () => {
+    if (!isHost) return;
+    if (!motionTitle.trim()) return alert("請輸入表決題目");
+    socketRef.current?.emit("open_motion", {
+      meetingId, title: motionTitle.trim(), description: motionDesc.trim()
+    });
+    setMotionTitle(""); setMotionDesc("");
+  };
+
+  const vote = (memberId, choice) => {
+    if (!currentMotionId) return alert("請先建立/選擇表決題目");
+    socketRef.current?.emit("submit_vote", {
+      meetingId, motionId: currentMotionId, memberId, choice
+    });
+  };
+
+  const revoke = (memberId) =>
+    socketRef.current?.emit("revoke_vote", { meetingId, memberId });
+
+  useEffect(() => () => socketRef.current?.disconnect(), []);
+
+  return (
+    <div style={{ fontFamily: "system-ui", padding: 16, maxWidth: 1200, margin: "0 auto" }}>
+      <h2>Meeting SaaS</h2>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+        <div style={{ border: "1px solid #eee", padding: 12, borderRadius: 12 }}>
+          <h3>1) 登入 (JWT)</h3>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <input value={schoolId} onChange={e => setSchoolId(e.target.value)} placeholder="schoolId" />
+            <input value={userId} onChange={e => setUserId(e.target.value)} placeholder="userId" />
+            <input value={name} onChange={e => setName(e.target.value)} placeholder="name" />
+            <select value={role} onChange={e => setRole(e.target.value)}>
+              <option value="viewer">viewer</option>
+              <option value="member">member</option>
+              <option value="host">host</option>
+              <option value="admin">admin</option>
+            </select>
+            <button onClick={doLogin}>Login</button>
+          </div>
+          <div style={{ marginTop: 8, fontSize: 12, color: "#666" }}>
+            token: {token ? "已取得" : "—"}
+          </div>
+        </div>
+
+        <div style={{ border: "1px solid #eee", padding: 12, borderRadius: 12 }}>
+          <h3>2) 建立/加入會議</h3>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <input value={title} onChange={e => setTitle(e.target.value)} placeholder="會議名稱" />
+            <button onClick={doCreateMeeting} disabled={!token || !isHost}>Create meeting</button>
+            <input value={meetingId} onChange={e => setMeetingId(e.target.value)} placeholder="meetingId" />
+            <button onClick={join} disabled={!token || !meetingId}>Join</button>
+          </div>
+
+          {meetingId && (
+            <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <a href={exportCsvUrl(meetingId)} target="_blank" rel="noreferrer">Export CSV</a>
+              <a href={exportPdfUrl(meetingId)} target="_blank" rel="noreferrer">Export PDF</a>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <hr />
+
+      {isHost && (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+          <div style={{ border: "1px solid #eee", padding: 12, borderRadius: 12 }}>
+            <h3>主持人：新增議員</h3>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <input value={mName} onChange={e => setMName(e.target.value)} placeholder="姓名" />
+              <input value={mRole} onChange={e => setMRole(e.target.value)} placeholder="職稱" />
+              <button onClick={addMember}>新增</button>
+            </div>
+          </div>
+
+          <div style={{ border: "1px solid #eee", padding: 12, borderRadius: 12 }}>
+            <h3>主持人：建立表決題目</h3>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <input value={motionTitle} onChange={e => setMotionTitle(e.target.value)} placeholder="題目" />
+              <input value={motionDesc} onChange={e => setMotionDesc(e.target.value)} placeholder="說明（可空）" />
+              <button onClick={openMotion}>Open motion</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div style={{ marginTop: 16, border: "1px solid #eee", padding: 12, borderRadius: 12 }}>
+        <h3>目前表決題目</h3>
+        <select value={currentMotionId} onChange={e => setCurrentMotionId(e.target.value)}>
+          <option value="">（尚無）</option>
+          {motions.map(m => (
+            <option key={m.id} value={m.id}>{m.title} | {m.status}</option>
+          ))}
+        </select>
+      </div>
+
+      <h3 style={{ marginTop: 16 }}>記名投票名單（投票鎖定，主持人可撤銷）</h3>
+      <table style={{ borderCollapse: "collapse", width: "100%" }}>
+        <thead>
+          <tr>
+            {["姓名", "職稱", "投票狀態", "操作"].map(h => (
+              <th key={h} style={{ border: "1px solid #ddd", padding: 8, textAlign: "left" }}>{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {members.map(m => (
+            <tr key={m.id}>
+              <td style={{ border: "1px solid #ddd", padding: 8 }}>{m.name}</td>
+              <td style={{ border: "1px solid #ddd", padding: 8 }}>{m.role}</td>
+              <td style={{ border: "1px solid #ddd", padding: 8 }}>{voteLabel(m.vote)}</td>
+              <td style={{ border: "1px solid #ddd", padding: 8 }}>
+                <button disabled={!!m.locked} onClick={() => vote(m.id, "Y")}>同意</button>{" "}
+                <button disabled={!!m.locked} onClick={() => vote(m.id, "N")}>反對</button>{" "}
+                <button disabled={!!m.locked} onClick={() => vote(m.id, "A")}>棄權</button>{" "}
+                <button disabled={!isHost} onClick={() => revoke(m.id)}>撤銷</button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      <div style={{ marginTop: 10, fontSize: 12, color: "#666" }}>
+        * 匯出 PDF/CSV 會從 Postgres 取資料；Audit Log 以 Hash Chain 寫入 audit_log（不可抵賴）。
+      </div>
+    </div>
+  );
+}
+
+
+================================================================================
+FILE: client-vanilla/index.html
+================================================================================
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Meeting SaaS (Vanilla)</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Arial; padding: 16px; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #ddd; padding: 8px; }
+    .actions button { margin-right: 6px; }
+    .badge { padding: 2px 8px; border-radius: 999px; border: 1px solid #aaa; display: inline-block; }
+    .muted { color: #666; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <h2>Meeting LiveBoard (Vanilla)</h2>
+
+  <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:end;">
+    <div>
+      <div class="muted">Server</div>
+      <input id="serverUrl" value="http://localhost:3000" style="width:260px;">
+    </div>
+    <div>
+      <div class="muted">meetingId</div>
+      <input id="meetingId" placeholder="例如: AbCd1234" style="width:160px;">
+    </div>
+    <div>
+      <div class="muted">role token</div>
+      <input id="token" value="host:demo" style="width:160px;">
+    </div>
+    <div>
+      <div class="muted">user name</div>
+      <input id="userName" value="Sunny" style="width:160px;">
+    </div>
+    <button id="btnJoin">Join</button>
+  </div>
+
+  <hr/>
+
+  <div id="hostPanel" style="display:none;">
+    <h3>主持人：新增議員</h3>
+    <input id="mName" placeholder="姓名">
+    <input id="mRole" placeholder="職稱">
+    <button id="btnAdd">新增</button>
+  </div>
+
+  <h3>記名投票名單</h3>
+  <table>
+    <thead>
+      <tr>
+        <th>姓名</th><th>職稱</th><th>投票狀態</th><th>操作</th><th>最後更新</th>
+      </tr>
+    </thead>
+    <tbody id="tbody"></tbody>
+  </table>
+
+  <h3>Audit（最近 50 筆）</h3>
+  <pre id="audit" style="background:#f7f7f7; padding:8px; border:1px solid #eee; overflow:auto;"></pre>
+
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <script>
+    let socket = null;
+    const members = new Map();
+
+    const el = (id) => document.getElementById(id);
+    const fmtTime = (ms) => ms ? new Date(Number(ms)).toLocaleString() : "—";
+    const voteLabel = (v) => v==="Y"?"同意":v==="N"?"反對":v==="A"?"棄權":"未投票";
+
+    function renderTable() {
+      const tbody = el("tbody");
+      tbody.innerHTML = "";
+      for (const m of members.values()) {
+        const tr = document.createElement("tr");
+        tr.dataset.memberId = m.id;
+        tr.innerHTML = `
+          <td>${escapeHtml(m.name)}</td>
+          <td>${escapeHtml(m.role || "一般議員")}</td>
+          <td><span class="badge">${voteLabel(m.vote)}</span></td>
+          <td>
+            <div class="actions">
+              <button class="btnVote" data-v="Y" ${m.locked ? "disabled":""}>同意</button>
+              <button class="btnVote" data-v="N" ${m.locked ? "disabled":""}>反對</button>
+              <button class="btnVote" data-v="A" ${m.locked ? "disabled":""}>棄權</button>
+              <button class="btnRevoke" ${m.vote ? "":"disabled"}>撤銷</button>
+            </div>
+          </td>
+          <td class="muted">${fmtTime(m.updated_at)}</td>
+        `;
+        tr.querySelectorAll(".btnVote").forEach(btn=>{
+          btn.addEventListener("click", ()=>{
+            socket?.emit("submit_vote", { memberId: m.id, vote: btn.dataset.v });
+          });
+        });
+        tr.querySelector(".btnRevoke").addEventListener("click", ()=>{
+          socket?.emit("revoke_vote", { memberId: m.id });
+        });
+        tbody.appendChild(tr);
+      }
+    }
+
+    function escapeHtml(s) {
+      if (!s) return "";
+      return String(s).replace(/[&<>"']/g, c => ({
+        "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+      }[c]));
+    }
+
+    el("btnJoin").onclick = () => {
+      const serverUrl = el("serverUrl").value.trim();
+      const meetingId = el("meetingId").value.trim();
+      const token = el("token").value.trim();
+      const userName = el("userName").value.trim() || "Anonymous";
+
+      if (!serverUrl || !meetingId) return alert("請填 serverUrl 與 meetingId");
+
+      socket = io(serverUrl, { auth: { token } });
+
+      socket.on("connect", () => {
+        socket.emit("join_meeting", { meetingId, user: { id: userName, name: userName } });
+        el("hostPanel").style.display = token.startsWith("host:") ? "block" : "none";
+      });
+
+      socket.on("meeting_snapshot", (snap) => {
+        members.clear();
+        (snap.members || []).forEach(m => members.set(m.id, m));
+        renderTable();
+        el("audit").textContent = JSON.stringify(snap.auditTail || [], null, 2);
+      });
+
+      socket.on("state_patch", (patch) => {
+        if (patch.type === "member_upsert") {
+          members.set(patch.member.id, patch.member);
+          renderTable();
+        }
+        if (patch.type === "member_vote") {
+          const m = members.get(patch.memberId);
+          if (m) {
+            m.vote = patch.vote;
+            m.locked = patch.locked;
+            m.updated_at = patch.updatedAt;
+            renderTable();
+          }
+        }
+      });
+    };
+
+    el("btnAdd").onclick = () => {
+      const name = el("mName").value.trim();
+      const role = el("mRole").value.trim();
+      if (!name) return alert("請輸入姓名");
+      const meetingId = el("meetingId").value.trim();
+      socket?.emit("add_member", { meetingId, name, role });
+      el("mName").value = "";
+      el("mRole").value = "";
+    };
+  </script>
+</body>
+</html>
+
+
+================================================================================
+FILE: deploy/backup.sh
+================================================================================
+#!/usr/bin/env bash
+set -euo pipefail
+
+TS=$(date +"%Y%m%d_%H%M%S")
+OUT="deploy/backups/meeting_${TS}.sql.gz"
+mkdir -p deploy/backups
+
+echo "[+] Backing up postgres to $OUT"
+docker compose exec -T postgres pg_dump -U meeting -d meeting | gzip > "$OUT"
+echo "[+] Done"
+
+
+================================================================================
+FILE: deploy/restore.sh
+================================================================================
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [ $# -lt 1 ]; then
+  echo "Usage: bash deploy/restore.sh deploy/backups/<file.sql.gz>"
+  exit 1
+fi
+
+FILE="$1"
+if [ ! -f "$FILE" ]; then
+  echo "File not found: $FILE"
+  exit 1
+fi
+
+echo "[!] This will overwrite current DB data."
+echo "[+] Restoring from $FILE"
+
+gunzip -c "$FILE" | docker compose exec -T postgres psql -U meeting -d meeting
+echo "[+] Done"
+
+
+================================================================================
+END OF ALL FILES
+================================================================================
