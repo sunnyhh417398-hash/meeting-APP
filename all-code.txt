@@ -1,7 +1,43 @@
-================================================================================
-Meeting SaaS - Complete Source Code
-================================================================================
-
+################################################################################
+#                         MEETING SAAS — FULL SOURCE CODE                      #
+################################################################################
+#
+# Repository structure:
+#
+#   meeting-APP/
+#     .gitignore
+#     .env.example
+#     docker-compose.yml
+#     README.md
+#     server/
+#       package.json
+#       Dockerfile
+#       src/
+#         db.js
+#         auth.js
+#         rbac.js
+#         audit.js
+#         store.js
+#         agenda.js
+#         export.js
+#         socket.js
+#         index.js
+#     client-react/
+#       package.json
+#       Dockerfile
+#       vite.config.js
+#       index.html
+#       src/
+#         main.jsx
+#         api.js
+#         App.jsx
+#     client-vanilla/
+#       index.html
+#     deploy/
+#       backup.sh
+#       restore.sh
+#
+################################################################################
 
 ================================================================================
 FILE: .gitignore
@@ -981,7 +1017,7 @@ export default function App() {
             <button onClick={doLogin}>Login</button>
           </div>
           <div style={{ marginTop: 8, fontSize: 12, color: "#666" }}>
-            token: {token ? "Acquired" : "—"}
+            token: {token ? "Acquired" : "\u2014"}
           </div>
         </div>
 
@@ -1139,7 +1175,7 @@ FILE: client-vanilla/index.html
     const members = new Map();
 
     const el = (id) => document.getElementById(id);
-    const fmtTime = (ms) => ms ? new Date(Number(ms)).toLocaleString() : "—";
+    const fmtTime = (ms) => ms ? new Date(Number(ms)).toLocaleString() : "\u2014";
     const voteLabel = (v) => v==="Y"?"Agree":v==="N"?"Oppose":v==="A"?"Abstain":"Not Voted";
 
     function renderTable() {
@@ -1270,6 +1306,4 @@ echo "[+] Restoring from $FILE"
 gunzip -c "$FILE" | docker compose exec -T postgres psql -U meeting -d meeting
 echo "[+] Done"
 
-================================================================================
 END OF ALL FILES
-================================================================================
